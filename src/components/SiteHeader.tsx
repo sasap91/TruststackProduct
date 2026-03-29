@@ -12,6 +12,9 @@ export function SiteHeader() {
           <Link href="/pricing" className="transition-colors hover:text-teal-600 dark:hover:text-teal-400">
             Pricing
           </Link>
+          <Link href="/contact" className="transition-colors hover:text-teal-600 dark:hover:text-teal-400">
+            Contact
+          </Link>
           <Show when="signed-out">
             <SignInButton mode="modal">
               <button className="rounded-full bg-teal-600 px-4 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400">
