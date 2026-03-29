@@ -1,11 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { monthlyUsageCount } from "@/lib/ratelimit";
-
-type CaseWithEvidence = Prisma.CaseGetPayload<{
-  include: { evidence: { select: { type: true; rawScore: true; agentSource: true } } };
-}>;
 
 const statusColour: Record<string, string> = {
   APPROVED:      "text-emerald-600 dark:text-emerald-400",
@@ -68,7 +63,7 @@ export async function CasesList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 bg-white dark:divide-zinc-800/60 dark:bg-zinc-900/20">
-              {cases.map((c: CaseWithEvidence) => {
+              {cases.map((c) => {
                 const imgArtifact = c.evidence.find((e) => e.type === "IMAGE");
                 const txtArtifact = c.evidence.find((e) => e.type === "TEXT");
                 return (
