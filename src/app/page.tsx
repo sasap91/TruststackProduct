@@ -1,65 +1,199 @@
-import Image from "next/image";
+import Link from "next/link";
+import { SiteFooter } from "@/components/SiteFooter";
+import { SiteHeader } from "@/components/SiteHeader";
+
+const capabilities = [
+  {
+    title: "Multimodal analysis",
+    body: "Review claim text, images, documents, and metadata in one unified workflow — no stitching together separate tools.",
+  },
+  {
+    title: "Signal fusion",
+    body: "Detect inconsistencies, weak evidence, and risk across multiple inputs to surface a single, reliable risk picture.",
+  },
+  {
+    title: "Policy-driven decisions",
+    body: "Approve, review, reject, or request more evidence based on your own business rules — time limits, value thresholds, refund rate caps.",
+  },
+  {
+    title: "Autonomous actions",
+    body: "Trigger follow-ups automatically: issue refunds, escalate to agents, flag accounts, or request additional evidence.",
+  },
+  {
+    title: "Auditability",
+    body: "Keep a clear, immutable record of every signal, rule, and action behind every decision — ready for disputes or compliance review.",
+  },
+];
+
+const steps = [
+  { n: "01", title: "Create a case", body: "Submit claim details and evidence through the console or API." },
+  { n: "02", title: "Analyze evidence", body: "Text, images, documents, and metadata are scored across all dimensions." },
+  { n: "03", title: "Apply policy", body: "Your rules generate a decision and a plain-English explanation." },
+  { n: "04", title: "Take action", body: "Execute automatically or route to a human reviewer with the full audit trail." },
+];
+
+const endpoints = [
+  { method: "POST", path: "/api/cases", desc: "Create a new case" },
+  { method: "POST", path: "/api/cases/:id/evidence", desc: "Add evidence to a case" },
+  { method: "POST", path: "/api/cases/:id/analyze", desc: "Run analysis and policy evaluation" },
+  { method: "POST", path: "/api/cases/:id/actions", desc: "Trigger an action on a case" },
+  { method: "GET",  path: "/api/cases/:id", desc: "Fetch case details" },
+  { method: "GET",  path: "/api/cases/:id/decision", desc: "Fetch decision and audit trail" },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <>
+      <SiteHeader />
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 sm:px-6">
+
+        {/* Hero */}
+        <section className="py-20 sm:py-28">
+          <p className="text-sm font-medium uppercase tracking-widest text-teal-600 dark:text-teal-400">
+            Multimodal trust and safety for commerce
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-tight text-zinc-900 sm:text-5xl dark:text-zinc-50">
+            Verify claims. Detect fraud. Automate decisions.
+          </h1>
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+            TrustStack is a policy-driven decision platform for returns, disputes, and fraud workflows.
+            It turns messy evidence into structured signals, applies your business rules, and recommends
+            or executes the right action with a clear audit trail.
+          </p>
+          <div className="mt-10 flex flex-wrap gap-4">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center justify-center rounded-full bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400"
+            >
+              Try the console
+            </Link>
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              View pricing
+            </Link>
+          </div>
+        </section>
+
+        {/* Core capabilities */}
+        <section className="border-t border-zinc-200/80 py-16 dark:border-zinc-800/80">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Core capabilities
+          </h2>
+          <p className="mt-2 text-sm text-zinc-500">Everything you need to make consistent, defensible trust decisions at scale.</p>
+          <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {capabilities.map((c) => (
+              <li
+                key={c.title}
+                className="rounded-2xl border border-zinc-200/80 bg-white/60 p-5 dark:border-zinc-800/80 dark:bg-zinc-900/40"
+              >
+                <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">{c.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{c.body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* How it works */}
+        <section className="border-t border-zinc-200/80 py-16 dark:border-zinc-800/80">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            How it works
+          </h2>
+          <ol className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {steps.map((s) => (
+              <li
+                key={s.n}
+                className="rounded-2xl border border-zinc-200/80 bg-white/60 p-5 dark:border-zinc-800/80 dark:bg-zinc-900/40"
+              >
+                <span className="font-mono text-xs font-semibold text-teal-600 dark:text-teal-400">{s.n}</span>
+                <h3 className="mt-2 font-semibold text-zinc-900 dark:text-zinc-100">{s.title}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">{s.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* Solutions */}
+        <section className="border-t border-zinc-200/80 py-16 dark:border-zinc-800/80">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Solutions
+          </h2>
+          <div className="mt-8 grid gap-6 lg:grid-cols-2">
+
+            {/* Software */}
+            <div className="rounded-2xl border border-zinc-200/80 bg-white/60 p-6 dark:border-zinc-800/80 dark:bg-zinc-900/40">
+              <span className="text-xs font-semibold uppercase tracking-widest text-teal-600 dark:text-teal-400">Software</span>
+              <h3 className="mt-2 text-lg font-semibold text-zinc-900 dark:text-zinc-100">TrustStack Console</h3>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                A dedicated console for operations teams to manage cases, review evidence, configure
+                policies, and track decisions — no engineering required.
+              </p>
+              <Link
+                href="/dashboard"
+                className="mt-6 inline-flex items-center rounded-full bg-teal-600 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400"
+              >
+                Open console
+              </Link>
+            </div>
+
+            {/* API */}
+            <div className="rounded-2xl border border-zinc-200/80 bg-white/60 p-6 dark:border-zinc-800/80 dark:bg-zinc-900/40">
+              <span className="text-xs font-semibold uppercase tracking-widest text-teal-600 dark:text-teal-400">API Endpoints</span>
+              <h3 className="mt-2 text-lg font-semibold text-zinc-900 dark:text-zinc-100">REST API</h3>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                Wire TrustStack directly into your existing returns or dispute flow with a simple REST API.
+              </p>
+              <ul className="mt-4 space-y-1.5">
+                {endpoints.map((e) => (
+                  <li key={e.path} className="flex items-start gap-2 text-xs">
+                    <span className={`mt-px shrink-0 rounded px-1.5 py-0.5 font-mono font-semibold ${
+                      e.method === "POST"
+                        ? "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300"
+                        : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                    }`}>
+                      {e.method}
+                    </span>
+                    <span>
+                      <code className="font-mono text-zinc-800 dark:text-zinc-200">{e.path}</code>
+                      <span className="ml-2 text-zinc-500">— {e.desc}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/settings"
+                className="mt-6 inline-flex items-center rounded-full border border-zinc-300 px-5 py-2 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Get API key
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* One-liner CTA */}
+        <section className="border-t border-zinc-200/80 py-16 text-center dark:border-zinc-800/80">
+          <p className="mx-auto max-w-2xl text-xl font-semibold leading-snug text-zinc-900 dark:text-zinc-50">
+            A multimodal, policy-driven platform that helps commerce teams verify claims, detect fraud, and automate trust and safety decisions.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/sign-up"
+              className="inline-flex items-center rounded-full bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400"
+            >
+              Get started free
+            </Link>
+            <Link
+              href="/pricing"
+              className="inline-flex items-center rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            >
+              See pricing
+            </Link>
+          </div>
+        </section>
+
       </main>
-    </div>
+      <SiteFooter />
+    </>
   );
 }

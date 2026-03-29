@@ -1,0 +1,338 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum CaseStatus {
+  OPEN
+  ANALYZING
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum EvidenceType {
+  IMAGE
+  TEXT
+  DOCUMENT
+  ORDER_DATA
+  METADATA
+}
+
+// ── Cases ─────────────────────────────────────────────────────────────────────
+
+/// A Case is the primary unit of work. It may contain multiple evidence
+/// artifacts and accumulates runs, signals, events as it moves through
+/// the review lifecycle. A case may be re-analyzed (multiple runs).
+model Case {
+  id        String     @id @default(cuid())
+  /// Human-readable reference, e.g. TS-2026-A3F9
+  ref       String     @unique
+  userId    String
+  status    CaseStatus @default(OPEN)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  resolvedAt DateTime?
+
+  // Claim context
+  claimType      String?
+  description    String?
+  deliveryStatus String?
+
+  // Denormalized decision output (populated from the latest run)
+  decision      String?   // PolicyDecision outcome
+  justification String?
+  judgeSource   String?   // "claude" | "demo"
+  riskScore     Float?
+  riskLevel     String?
+
+  // Legacy JSON blobs (kept for backward-compat; authoritative data is in
+  // ExtractedSignal / DecisionRun rows)
+  signals          Json?
+  consistencyScore Float?
+  auditTrail       Json?
+
+  // Relations
+  evidence         EvidenceArtifact[]
+  runs             DecisionRun[]
+  extractedSignals ExtractedSignal[]
+  actionExecutions ActionExecution[]
+  humanReviews      HumanReview[]
+  events            CaseEvent[]
+  outcomeFeedbacks  OutcomeFeedback[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+}
+
+/// A single piece of evidence attached to a case.
+/// Analyzed by a modality-specific agent; contributes signals to the run.
+model EvidenceArtifact {
+  id     String       @id @default(cuid())
+  caseId String
+  case   Case         @relation(fields: [caseId], references: [id])
+  type   EvidenceType
+
+  // Raw content (inline for text; storage ref for binaries)
+  rawText    String?
+  storageRef String?  // future: object storage key (S3 / R2)
+  mimeType   String?
+  sizeBytes  Int?
+
+  // Agent analysis metadata
+  agentName   String?
+  agentModel  String?
+  agentSource String?
+  rawScore    Float?
+  agentNotes  Json?   // string[]
+
+  // Legacy signals blob (authoritative data is in ExtractedSignal rows)
+  signals Json?
+
+  createdAt DateTime @default(now())
+
+  // Relations
+  extractedSignals ExtractedSignal[]
+
+  @@index([caseId])
+}
+
+// ── Decision Infrastructure ───────────────────────────────────────────────────
+
+/// Snapshot of the policy configuration active at the time of a run.
+/// Enables reproducibility: re-run any case with the same policy.
+/// Identified by a SHA-256 prefix of the serialized config.
+model PolicyVersion {
+  id             String   @id @default(cuid())
+  /// Short hash of the config contents — stable identity across restarts
+  version        String
+  /// "standard" | "strict" | "lenient" | "custom"
+  packId         String   @default("standard")
+  /// Full PolicyConfig at the time of the run (for audit / replay)
+  configSnapshot Json
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  runs DecisionRun[]
+
+  /// Same config always maps to the same row
+  @@unique([version, packId])
+  @@index([isActive])
+}
+
+/// One execution of the full analysis pipeline against a ClaimCase.
+/// A case may have many runs (re-analysis after new evidence, policy changes).
+model DecisionRun {
+  id              String         @id @default(cuid())
+  caseId          String
+  case            Case           @relation(fields: [caseId], references: [id])
+  policyVersionId String?
+  policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
+
+  // Provenance
+  triggeredBy     String   // userId or "system"
+  pipelineVersion String   @default("2.0.0")
+
+  // Risk output
+  riskScore        Float?
+  riskLevel        String?  // "low" | "medium" | "high" | "critical"
+  evidenceStrength String?  // "strong" | "moderate" | "weak" | "insufficient"
+  consistencyScore Float?
+  modalitiesCovered String[] // e.g. ["image", "text"]
+
+  // Decision output
+  outcome     String?  // "approve" | "review" | "request_more_evidence" | "reject" | "flag"
+  confidence  Float?
+  explanation String?
+  judgeSource String?  // "claude" | "demo"
+
+  // Timing
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  durationMs  Int?
+
+  // Relations
+  signals     ExtractedSignal[]
+  actions     ActionExecution[]
+  humanReview      HumanReview?
+  outcomeFeedbacks OutcomeFeedback[]
+
+  @@index([caseId, startedAt(sort: Desc)])
+  @@index([policyVersionId])
+}
+
+/// Post-decision feedback: human overrides, merchant resolution, chargeback/dispute outcomes.
+/// Used for calibration, threshold tuning, and eval replay — not for autonomous model drift.
+model OutcomeFeedback {
+  id              String   @id @default(cuid())
+  caseId          String
+  case            Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  decisionRunId   String?
+  decisionRun     DecisionRun? @relation(fields: [decisionRunId], references: [id], onDelete: SetNull)
+
+  kind            String
+  pipelineOutcome String?
+  finalOutcome    String?
+  chargebackWon   Boolean?
+  amountUsd       Float?
+  notes           String?
+  recordedBy      String?
+  metadata        Json?
+
+  createdAt       DateTime @default(now())
+
+  @@index([caseId, createdAt(sort: Desc)])
+  @@index([kind])
+  @@index([decisionRunId])
+}
+
+/// A normalized signal extracted from one or more evidence artifacts.
+/// These are the atoms of evidence — every downstream stage (risk, policy, judge)
+/// works exclusively from signals, never from raw media.
+model ExtractedSignal {
+  id            String  @id @default(cuid())
+  caseId        String
+  case          Case    @relation(fields: [caseId], references: [id])
+  decisionRunId String
+  decisionRun   DecisionRun @relation(fields: [decisionRunId], references: [id])
+
+  /// Primary source artifact (first in sourceArtifactIds)
+  sourceArtifactId String?
+  sourceArtifact   EvidenceArtifact? @relation(fields: [sourceArtifactId], references: [id])
+
+  // Signal identity (stable across model upgrades)
+  key            String  // e.g. "image_authenticity", "logistics_conflict"
+  value          String  // human-readable, e.g. "87% AI-generated likelihood"
+  flag           String  // "risk" | "neutral" | "clean"
+  weight         String  // "high" | "medium" | "low"
+  confidence     Float
+  rawScore       Float?
+  sourceModality String  // "image" | "text" | "document" | "metadata"
+  extractor      String  // agent or rule that produced this, e.g. "image-ai-agent"
+  rationale      String?
+
+  // Fusion metadata (populated after SignalFusionAgent runs)
+  reinforced     Boolean  @default(false)
+  fusedFromCount Int      @default(1)
+  /// Keys of signals from OTHER modalities that agree with this signal's flag
+  corroboratedBy String[]
+  /// Keys of signals from OTHER modalities that contradict this signal's flag
+  contradictedBy String[]
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([decisionRunId])
+  @@index([sourceArtifactId])
+  /// Enables analytics queries: how often does key X fire as "risk"?
+  @@index([key, flag])
+}
+
+/// An action taken or deferred by the system as a result of a PolicyDecision,
+/// or initiated manually by a human reviewer.
+model ActionExecution {
+  id            String  @id @default(cuid())
+  caseId        String
+  case          Case    @relation(fields: [caseId], references: [id])
+  decisionRunId String?
+  decisionRun   DecisionRun? @relation(fields: [decisionRunId], references: [id])
+
+  /// ActionType from domain model
+  action       String  // "auto_refund" | "send_to_human_review" | "block_and_flag" | ...
+  status       String  // "pending" | "executing" | "completed" | "failed" | "skipped"
+  targetSystem String?
+  auditMessage String
+
+  /// Who triggered this action (userId or "system")
+  triggeredBy String
+  /// Optional reviewer note (for human-initiated overrides)
+  notes       String?
+  /// True when a human manually triggered this outside the normal pipeline
+  isOverride  Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([decisionRunId])
+  @@index([action, status])
+}
+
+/// A human reviewer's explicit decision on a case.
+/// Separate from CaseEvent (immutable log) — HumanReview is a queryable entity
+/// that enables reviewer performance analytics and override tracking.
+model HumanReview {
+  id            String  @id @default(cuid())
+  caseId        String
+  case          Case    @relation(fields: [caseId], references: [id])
+
+  /// The run this review is responding to (null if reviewing without a prior run)
+  decisionRunId String?  @unique
+  decisionRun   DecisionRun? @relation(fields: [decisionRunId], references: [id])
+
+  reviewerId     String   // userId of the human reviewer
+  /// "approve" | "reject" | "request_more_evidence"
+  decision       String
+  previousStatus String
+  newStatus      String
+
+  notes      String?  // reviewer notes, max 2000 chars
+  confidence Float?   // reviewer confidence 0–1 (optional)
+
+  reviewedAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([reviewerId])
+}
+
+// ── Immutable Event Log ───────────────────────────────────────────────────────
+
+/// Append-only audit log for every meaningful transition on a case.
+/// Never updated, never deleted. All other models may be updated.
+model CaseEvent {
+  id        String   @id @default(cuid())
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id])
+  /// userId or "system"
+  actor     String
+  /// "case_created" | "evidence_added" | "agents_completed" | "signals_fused"
+  /// | "risk_assessed" | "policy_applied" | "judge_completed"
+  /// | "status_changed" | "override" | "review_submitted"
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([caseId, createdAt(sort: Desc)])
+}
+
+// ── API Keys ──────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  keyHash   String    @unique
+  prefix    String
+  createdAt DateTime  @default(now())
+  lastUsed  DateTime?
+  active    Boolean   @default(true)
+
+  @@index([userId])
+  @@index([keyHash])
+}
+
+// ── Usage Records ─────────────────────────────────────────────────────────────
+
+model UsageRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+}
