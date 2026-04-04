@@ -47,7 +47,7 @@ export async function persistRunToDb(
   userId:       string,
   opts?:        { imageMime?: string; imageSizeBytes?: number },
   policyConfig: PolicyConfig = {},
-): Promise<void> {
+): Promise<string> {
   const decision   = run.policyDecision;
   const risk       = run.riskAssessment;
   const caseStatus = decision ? outcomeToDbStatus(decision.outcome) : "FLAGGED";
@@ -131,6 +131,8 @@ export async function persistRunToDb(
 
   // Persist normalized run tables (background — already in a bg context)
   await persistRunOutputs(dbCase.id, run, policyConfig, "standard", artifactIdMap);
+
+  return dbCase.id;
 }
 
 // ── Update existing case with run outputs ─────────────────────────────────────

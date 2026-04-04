@@ -163,7 +163,7 @@ export async function saveActionExecutions(
       caseId,
       decisionRunId: decisionRunId ?? null,
       action:       a.action,
-      status:       a.status,
+      status:       "pending", // executor transitions: pending → executing → completed | failed
       targetSystem: a.targetSystem ?? null,
       auditMessage: a.auditMessage,
       triggeredBy,

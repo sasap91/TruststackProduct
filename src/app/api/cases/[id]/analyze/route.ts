@@ -32,10 +32,31 @@ import { claimOrchestrator }    from "@/lib/truststack";
 import { buildClaimResponse }   from "@/lib/truststack/api";
 import { dbCaseToClaimCase, updateCaseWithRun } from "@/lib/case-storage";
 import { ApiError, withErrorHandling } from "@/lib/api-validate";
-import type { PolicyConfig }    from "@/lib/truststack";
+import type { PolicyConfig, DecisionRun } from "@/lib/truststack";
+import { executeActions, type ActionExecutorContext } from "@/lib/truststack/executor";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
+
+function buildExecutorContext(
+  run:     DecisionRun,
+  caseRef: string,
+  userId:  string,
+): ActionExecutorContext {
+  return {
+    caseRef,
+    claimDescription:   run.justification ?? "",
+    riskLevel:          run.riskAssessment?.riskLevel ?? "low",
+    riskScore:          run.riskAssessment?.consistencyScore ?? 0,
+    outcome:            run.policyDecision?.outcome ?? "review",
+    triggeredRules:     run.policyDecision?.matchedRules.filter((r) => r.triggered).map((r) => r.detail) ?? [],
+    evidenceReferences: [],
+    contradictions:     run.fusionResult?.contradictions ?? [],
+    evidenceStrength:   run.fusionResult?.evidenceStrength ?? "insufficient",
+    modalitiesCovered:  run.fusionResult?.modalitiesCovered ?? [],
+    userId,
+  };
+}
 
 export const POST = withErrorHandling(async (request, { params }) => {
   const userId = await resolveUserId(request);
@@ -83,8 +104,10 @@ export const POST = withErrorHandling(async (request, { params }) => {
     triggeredBy: userId,
   });
 
-  // ── Persist results (background) ──────────────────────────────────────────
-  updateCaseWithRun(caseId, run, claimCase, userId).catch(() => null);
+  // ── Persist results then execute autonomous actions (background) ─────────
+  updateCaseWithRun(caseId, run, claimCase, userId)
+    .then(() => executeActions(caseId, run.actions, buildExecutorContext(run, dbCase.ref, userId)))
+    .catch(() => null);
 
   // ── Respond ───────────────────────────────────────────────────────────────
   const response = buildClaimResponse(run, dbCase.ref);

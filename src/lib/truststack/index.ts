@@ -149,6 +149,10 @@ export type {
 // Pipeline (backwards-compatible wrapper around orchestrator)
 export { runDecisionPipeline, type PipelineInput } from "./pipeline";
 
+// Action executor (autonomous action execution layer)
+export { executeActions } from "./executor";
+export type { ActionExecutorContext } from "./executor";
+
 // Evaluation & outcome feedback (fixtures, harness, hooks)
 export {
   buildEvalScenario,

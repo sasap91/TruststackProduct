@@ -45,10 +45,31 @@ import {
   optionalPositiveNumber,
   optionalBoolean,
 } from "@/lib/api-validate";
-import type { PolicyConfig } from "@/lib/truststack";
+import type { PolicyConfig, DecisionRun } from "@/lib/truststack";
+import { executeActions, type ActionExecutorContext } from "@/lib/truststack/executor";
 
 export const runtime    = "nodejs";
 export const maxDuration = 60;
+
+function buildExecutorContext(
+  run:     DecisionRun,
+  caseRef: string,
+  userId:  string,
+): ActionExecutorContext {
+  return {
+    caseRef,
+    claimDescription:   run.justification ?? "",
+    riskLevel:          run.riskAssessment?.riskLevel ?? "low",
+    riskScore:          run.riskAssessment?.consistencyScore ?? 0,
+    outcome:            run.policyDecision?.outcome ?? "review",
+    triggeredRules:     run.policyDecision?.matchedRules.filter((r) => r.triggered).map((r) => r.detail) ?? [],
+    evidenceReferences: [],
+    contradictions:     run.fusionResult?.contradictions ?? [],
+    evidenceStrength:   run.fusionResult?.evidenceStrength ?? "insufficient",
+    modalitiesCovered:  run.fusionResult?.modalitiesCovered ?? [],
+    userId,
+  };
+}
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -162,11 +183,13 @@ export async function POST(request: Request) {
       triggeredBy: userId,
     });
 
-    // ── Persist (background, non-blocking) ─────────────────────────────────
+    // ── Persist then execute autonomous actions (background, non-blocking) ──
     persistRunToDb(run, claimCase, userId, {
       imageMime,
       imageSizeBytes: imageBuffer?.byteLength,
-    }).catch(() => null);
+    }).then((dbCaseId) =>
+      executeActions(dbCaseId, run.actions, buildExecutorContext(run, caseRef, userId))
+    ).catch(() => null);
 
     // Usage record (also background)
     db.usageRecord
