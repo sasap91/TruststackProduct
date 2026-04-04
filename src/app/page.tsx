@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { DecisionPanel, type ClaimAnalysisResult } from "@/components/DecisionPanel";
+import mockDecision from "../../public/mock-decision.json";
 
 const capabilities = [
   {
@@ -9,7 +11,7 @@ const capabilities = [
   },
   {
     title: "Signal fusion",
-    body: "Detect inconsistencies, weak evidence, and risk across multiple inputs to surface a single, reliable risk picture.",
+    body: "Detect inconsistencies, weak evidence, and returns fraud risk across multiple inputs to surface a single, reliable risk picture.",
   },
   {
     title: "Policy-driven decisions",
@@ -50,13 +52,13 @@ export default function Home() {
         {/* Hero */}
         <section className="py-20 sm:py-28">
           <p className="text-sm font-medium uppercase tracking-widest text-teal-600 dark:text-teal-400">
-            Multimodal trust and safety for commerce
+            Multimodal Integrity Operations for Retailers, DTC Brands, and Marketplaces
           </p>
           <h1 className="mt-4 max-w-2xl text-4xl font-semibold tracking-tight text-zinc-900 sm:text-5xl dark:text-zinc-50">
             Verify claims. Detect fraud. Automate decisions.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-            TrustStack is a policy-driven decision platform for returns, disputes, and fraud workflows.
+            TrustStack is a policy-driven decision platform for returns, disputes, and claim fraud workflows.
             It turns messy evidence into structured signals, applies your business rules, and recommends
             or executes the right action with a clear audit trail.
           </p>
@@ -81,7 +83,7 @@ export default function Home() {
           <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             Core capabilities
           </h2>
-          <p className="mt-2 text-sm text-zinc-500">Everything you need to make consistent, defensible trust decisions at scale.</p>
+          <p className="mt-2 text-sm text-zinc-500">Everything you need to make consistent, defensible returns fraud decisions at scale.</p>
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {capabilities.map((c) => (
               <li
@@ -112,6 +114,38 @@ export default function Home() {
               </li>
             ))}
           </ol>
+        </section>
+
+        {/* See it in action */}
+        <section className="border-t border-zinc-200/80 py-16 dark:border-zinc-800/80">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            See it in action
+          </h2>
+          <p className="mt-2 text-sm text-zinc-500">
+            A non-delivery claim analyzed across image, text, and metadata evidence — in under two seconds.
+          </p>
+
+          {/* Browser chrome wrapper */}
+          <div className="mt-8 overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-sm dark:border-zinc-800/80 dark:bg-zinc-900/60">
+            {/* Title bar */}
+            <div className="flex items-center gap-2 border-b border-zinc-200/80 bg-zinc-100/80 px-4 py-3 dark:border-zinc-800/80 dark:bg-zinc-900/80">
+              <span className="h-3 w-3 rounded-full bg-red-400/80" />
+              <span className="h-3 w-3 rounded-full bg-amber-400/80" />
+              <span className="h-3 w-3 rounded-full bg-emerald-400/80" />
+              <div className="ml-3 flex-1 rounded-md border border-zinc-200/80 bg-white/80 px-3 py-1 dark:border-zinc-700 dark:bg-zinc-800/80">
+                <span className="font-mono text-xs text-zinc-400">app.truststack.com/cases/TS-2025-A3F1</span>
+              </div>
+            </div>
+
+            {/* Panel content */}
+            <div className="max-h-[640px] overflow-y-auto p-6">
+              <DecisionPanel result={mockDecision as ClaimAnalysisResult} />
+            </div>
+          </div>
+
+          <p className="mt-4 text-center text-sm text-zinc-500">
+            Every decision comes with a full signal breakdown and audit trail.
+          </p>
         </section>
 
         {/* Solutions */}
@@ -174,7 +208,7 @@ export default function Home() {
         {/* One-liner CTA */}
         <section className="border-t border-zinc-200/80 py-16 text-center dark:border-zinc-800/80">
           <p className="mx-auto max-w-2xl text-xl font-semibold leading-snug text-zinc-900 dark:text-zinc-50">
-            A multimodal, policy-driven platform that helps commerce teams verify claims, detect fraud, and automate trust and safety decisions.
+            A multimodal, policy-driven platform that helps commerce teams verify claims, detect returns fraud, and automate claim fraud decisions.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link

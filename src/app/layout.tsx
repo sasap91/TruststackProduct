@@ -4,9 +4,9 @@ import { PostHogProvider } from "@/components/PostHogProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TrustStack — AI content risk detection",
+  title: "TrustStack — Multimodal Integrity Operations for Commerce",
   description:
-    "Estimate the likelihood that images or text are AI-generated. Console and API starter for trust and safety teams.",
+    "TrustStack enables commerce teams to make faster, more consistent, and increasingly autonomous decisions across claims, disputes, returns, and fraud workflows using text, images, documents, and metadata",
 };
 
 export default function RootLayout({

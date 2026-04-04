@@ -1,0 +1,122 @@
+{
+  "caseId": "case_demo_01",
+  "caseRef": "TS-2025-A3F1",
+  "decisionRunId": "run_demo_01",
+  "decision": "reject",
+  "explanation": "Carrier scan confirms delivery at 14:14 on the claimed date. Image analysis identified an authentic USPS delivery confirmation label with a matching timestamp. The claimant's written statement asserts non-delivery but directly contradicts the carrier record. Velocity check flagged 3 prior non-delivery claims from this account in the last 30 days.",
+  "judgeSource": "claude",
+  "risk_score": 0.78,
+  "riskLevel": "high",
+  "actions": [
+    {
+      "action": "auto_reject",
+      "status": "completed",
+      "auditMessage": "Claim auto-rejected: carrier confirms delivery and account velocity exceeds threshold."
+    },
+    {
+      "action": "block_and_flag",
+      "status": "completed",
+      "auditMessage": "Account flagged for enhanced review on all future claims."
+    }
+  ],
+  "signals": [
+    {
+      "key": "delivery_confirmation",
+      "value": "USPS scan: delivered 14:14 — matches claimed order date",
+      "confidence": 0.94,
+      "flag": "risk",
+      "weight": "high",
+      "sourceModality": "image",
+      "rationale": "Shipping label image contains a valid USPS delivery barcode with a timestamp that directly contradicts the non-delivery claim.",
+      "reinforced": true,
+      "corroboratedBy": ["carrier_metadata"],
+      "contradictedBy": [],
+      "fusedFromCount": 2
+    },
+    {
+      "key": "claim_text_contradiction",
+      "value": "Claimant states 'never received' — carrier data shows delivered",
+      "confidence": 0.88,
+      "flag": "risk",
+      "weight": "high",
+      "sourceModality": "text",
+      "rationale": "Text claim asserts non-delivery on a day carrier records show a completed scan at the delivery address.",
+      "reinforced": false,
+      "corroboratedBy": [],
+      "contradictedBy": [],
+      "fusedFromCount": 1
+    },
+    {
+      "key": "high_claim_velocity",
+      "value": "3 non-delivery claims in 30 days from this account",
+      "confidence": 0.91,
+      "flag": "risk",
+      "weight": "high",
+      "sourceModality": "metadata",
+      "rationale": "Account has filed 3 non-delivery claims in the past 30 days, well above the 0.5/month baseline.",
+      "reinforced": false,
+      "corroboratedBy": [],
+      "contradictedBy": [],
+      "fusedFromCount": 1
+    },
+    {
+      "key": "order_value_in_range",
+      "value": "$189.00 — within standard auto-decision threshold",
+      "confidence": 0.99,
+      "flag": "neutral",
+      "weight": "low",
+      "sourceModality": "metadata",
+      "rationale": "Claim value is below the high-value threshold that would require manual review.",
+      "reinforced": false,
+      "corroboratedBy": [],
+      "contradictedBy": [],
+      "fusedFromCount": 1
+    }
+  ],
+  "contradictions": [
+    {
+      "signalA": "claim_text_contradiction",
+      "signalB": "delivery_confirmation",
+      "modalityA": "text",
+      "modalityB": "image",
+      "severity": "strong",
+      "description": "Claimant's written statement conflicts with the carrier delivery scan extracted from the shipping label image."
+    }
+  ],
+  "evidence_summary": [
+    {
+      "artifactId": "art_img_01",
+      "modality": "image",
+      "signalCount": 2,
+      "stepStatus": "completed"
+    },
+    {
+      "artifactId": "art_txt_01",
+      "modality": "text",
+      "signalCount": 1,
+      "stepStatus": "completed"
+    },
+    {
+      "artifactId": "art_meta_01",
+      "modality": "metadata",
+      "signalCount": 2,
+      "stepStatus": "completed"
+    }
+  ],
+  "audit_trail": [
+    { "stepId": "evidence:art_img_01", "label": "Image analysis — shipping label", "status": "completed", "durationMs": 312 },
+    { "stepId": "evidence:art_txt_01", "label": "Text analysis — claim narrative", "status": "completed", "durationMs": 189 },
+    { "stepId": "evidence:art_meta_01", "label": "Metadata analysis — order and account", "status": "completed", "durationMs": 44 },
+    { "stepId": "fusion", "label": "Signal fusion", "status": "completed", "durationMs": 67, "metadata": { "evidenceStrength": "strong" } },
+    { "stepId": "risk", "label": "Risk assessment", "status": "completed", "durationMs": 18 },
+    { "stepId": "policy", "label": "Policy evaluation", "status": "completed", "durationMs": 22 },
+    { "stepId": "judge", "label": "Judge — final reasoning", "status": "completed", "durationMs": 834 }
+  ],
+  "consistencyScore": 0.78,
+  "auditTrail": [
+    "Rule: high_velocity_reject — 3 claims in 30 days exceeds threshold of 2 → reject",
+    "Rule: carrier_delivery_confirmed — delivery scan present and timestamped → reject"
+  ],
+  "imageAiProbability": 0.12,
+  "textAiProbability": 0.08
+}
