@@ -43,8 +43,8 @@ export function generateCaseRef(): string {
 const OUTCOME_TO_STATUS: Record<string, CaseStatus> = {
   approve:               "APPROVED",
   flag:                  "FLAGGED",
-  review:                "FLAGGED",
-  request_more_evidence: "PENDING_REVIEW",
+  review:                "PENDING_REVIEW",
+  request_more_evidence: "AWAITING_EVIDENCE",
   reject:                "REJECTED",
 };
 

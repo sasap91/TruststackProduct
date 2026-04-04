@@ -43,6 +43,15 @@ export type DecisionRun = {
   justification?: string;
   judgeSource?: "claude" | "demo";
 
+  // ── Iterative evidence loop ────────────────────────────────────────────────
+  /**
+   * Which analysis pass produced this run.
+   * 1 = first run, 2+ = re-analysis after evidence re-submission.
+   * Capped at MAX_ITERATIONS (3) in the orchestrator loop; the 4th attempt
+   * force-escalates to human review.
+   */
+  iterationNumber?: number;
+
   // ── Audit context ──────────────────────────────────────────────────────────
   startedAt: Date;
   completedAt?: Date;

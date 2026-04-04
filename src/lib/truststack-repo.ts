@@ -73,6 +73,7 @@ export async function saveDecisionRun(
       policyVersionId: policyVersionId ?? undefined,
       triggeredBy:     run.triggeredBy,
       pipelineVersion: run.pipelineVersion,
+      iterationNumber: run.iterationNumber ?? 1,
 
       // Risk
       riskScore:        risk?.consistencyScore,

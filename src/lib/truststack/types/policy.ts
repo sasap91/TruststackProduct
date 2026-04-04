@@ -86,4 +86,12 @@ export type PolicyConfig = {
 
   /** Free-text notes passed verbatim to the LLM judge */
   customPolicyNotes?: string;
+
+  // ── Iterative evidence loop ───────────────────────────────────────────────
+  /**
+   * How long (hours) to wait for re-submitted evidence before auto-rejecting.
+   * Default 72h. After this window, a pending "awaiting_evidence" case is
+   * rejected rather than re-queued.
+   */
+  evidenceTimeoutHours?: number;
 };

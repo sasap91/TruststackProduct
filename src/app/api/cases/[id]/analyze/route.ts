@@ -7,34 +7,28 @@
  * Response 202:
  *   { status: "processing", caseId: string, pollUrl: string }
  *
- * Poll GET /api/cases/:id/status for completion.
- * On completion a webhook is fired to all subscribed endpoints:
- *   event "analysis.completed" — full decision payload
- *   event "analysis.failed"    — { error: string }
+ * Uses the iterative evidence-gathering loop (orchestrator-loop.ts):
+ *   - Iterations 1–3: respects "request_more_evidence" → sets AWAITING_EVIDENCE
+ *   - Iteration 4+: force-escalates to human review
+ *   - Evidence timeout exceeded: auto-rejects
  *
- * Request body (JSON, optional):
- *   policyConfig?: {
- *     autoApproveBelow?: number
- *     autoRejectAbove?: number
- *     lateFilingHours?: number
- *     highRefundRateThreshold?: number
- *     requireVideoForHighValue?: boolean
- *     policyPackId?: "standard" | "strict" | "lenient"
- *     customPolicyNotes?: string
- *   }
+ * Poll GET /api/cases/:id/status for completion.
+ * On completion a webhook fires:
+ *   event "analysis.completed" — full decision payload + awaiting_evidence flag
+ *   event "analysis.failed"    — { error: string }
  */
 
-import { NextResponse }      from "next/server";
-import { resolveUserId }     from "@/lib/apikey-auth";
-import { checkRateLimit }    from "@/lib/ratelimit";
-import { db }                from "@/lib/db";
-import { claimOrchestrator } from "@/lib/truststack";
+import { NextResponse }       from "next/server";
+import { resolveUserId }      from "@/lib/apikey-auth";
+import { checkRateLimit }     from "@/lib/ratelimit";
+import { db }                 from "@/lib/db";
 import { buildClaimResponse } from "@/lib/truststack/api";
 import { dbCaseToClaimCase, updateCaseWithRun } from "@/lib/case-storage";
 import { ApiError, withErrorHandling } from "@/lib/api-validate";
 import type { PolicyConfig, DecisionRun } from "@/lib/truststack";
 import { executeActions, type ActionExecutorContext } from "@/lib/truststack/executor";
 import { dispatchWebhook } from "@/lib/truststack/webhook-dispatcher";
+import { runWithLoop, type PreviousDecision } from "@/lib/truststack/orchestrator-loop";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
@@ -67,16 +61,14 @@ function buildExecutorContext(
 
 /**
  * Full analysis pipeline — runs in background after 202 is returned.
- * Handles its own error reporting so no exception escapes to the caller.
+ * Uses runWithLoop for the iterative evidence-gathering logic.
  */
-async function runAnalysisBackground(
+export async function runAnalysisBackground(
   caseId:       string,
   userId:       string,
   caseRef:      string,
   policyConfig: PolicyConfig,
 ): Promise<void> {
-  let claimCase;
-
   try {
     // Re-load the case inside the background job (fresh snapshot)
     const dbCase = await db.case.findFirst({
@@ -85,22 +77,73 @@ async function runAnalysisBackground(
     });
     if (!dbCase) return; // case deleted between accept and execution
 
-    claimCase = dbCaseToClaimCase(dbCase);
+    const claimCase = dbCaseToClaimCase(dbCase);
 
-    const { run } = await claimOrchestrator.run({
+    // Determine iteration number from prior completed runs
+    const priorRuns = await db.decisionRun.count({
+      where: { caseId, completedAt: { not: null } },
+    });
+    const iterationNumber = priorRuns + 1;
+
+    // Fetch previous run's decision for judge context (iteration 2+)
+    let previousDecision: PreviousDecision | undefined;
+    if (iterationNumber > 1) {
+      const prev = await db.decisionRun.findFirst({
+        where:   { caseId, completedAt: { not: null } },
+        orderBy: { startedAt: "desc" },
+        select:  { outcome: true, explanation: true, iterationNumber: true },
+      });
+      if (prev?.outcome) {
+        previousDecision = {
+          outcome:     prev.outcome,
+          explanation: prev.explanation ?? "",
+          iteration:   prev.iterationNumber ?? iterationNumber - 1,
+        };
+      }
+    }
+
+    // Run the pipeline with loop policy
+    const loopResult = await runWithLoop({
       claimCase,
-      mediaBuffers: undefined,
       policyConfig,
-      triggeredBy:  userId,
+      triggeredBy:     userId,
+      iterationNumber,
+      caseCreatedAt:   dbCase.createdAt,
+      previousDecision,
     });
 
-    // Persist results + execute autonomous actions
+    const { run, shouldAwaitEvidence, forcedEscalation, timedOut } = loopResult;
+
+    if (shouldAwaitEvidence) {
+      // Persist run (status reflects "request_more_evidence" → AWAITING_EVIDENCE)
+      await updateCaseWithRun(caseId, run, claimCase, userId);
+      // Execute only the evidence-request action — don't trigger other side-effects
+      const evidenceActions = run.actions.filter((a) => a.action === "request_more_evidence");
+      await executeActions(caseId, evidenceActions, buildExecutorContext(run, caseRef, userId, dbCase));
+
+      // Fire webhook with awaiting flag
+      const response = buildClaimResponse(run, caseRef);
+      await dispatchWebhook(caseId, "analysis.completed", {
+        ...(response as unknown as Record<string, unknown>),
+        awaiting_evidence: true,
+        iteration_number:  iterationNumber,
+      });
+      return;
+    }
+
+    // Normal / escalated / timed-out completion
     await updateCaseWithRun(caseId, run, claimCase, userId);
     await executeActions(caseId, run.actions, buildExecutorContext(run, caseRef, userId, dbCase));
 
-    // Fire webhook: analysis.completed
     const response = buildClaimResponse(run, caseRef);
-    await dispatchWebhook(caseId, "analysis.completed", response as unknown as Record<string, unknown>);
+    await dispatchWebhook(caseId, "analysis.completed", {
+      ...(response as unknown as Record<string, unknown>),
+      awaiting_evidence: false,
+      iteration_number:  iterationNumber,
+      forced_escalation: forcedEscalation,
+      timed_out:         timedOut,
+    });
+
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     console.error(`[analyze] Background analysis failed for case ${caseId}:`, err);
@@ -121,7 +164,6 @@ async function runAnalysisBackground(
       },
     }).catch(() => null);
 
-    // Fire webhook: analysis.failed
     await dispatchWebhook(caseId, "analysis.failed", { error: message });
   }
 }
@@ -147,7 +189,6 @@ export const POST = withErrorHandling(async (request, { params }) => {
     throw new ApiError(409, "Case is already resolved.");
   }
   if (dbCase.status === "ANALYZING") {
-    // Already in-flight — return 202 idempotently so callers can retry safely
     return NextResponse.json(
       { status: "processing", caseId, pollUrl: `/api/cases/${caseId}/status` },
       { status: 202 },
@@ -167,14 +208,10 @@ export const POST = withErrorHandling(async (request, { params }) => {
     data:  { status: "ANALYZING", updatedAt: new Date() },
   });
 
-  // ── Kick off background analysis (setImmediate = next tick, non-blocking) ───
-  // Standalone/Docker deployment — setImmediate keeps the event loop alive
-  // until the async work completes after the HTTP response is flushed.
   setImmediate(() => {
     void runAnalysisBackground(caseId, userId, dbCase.ref, policyConfig);
   });
 
-  // ── Return 202 immediately ──────────────────────────────────────────────────
   return NextResponse.json(
     { status: "processing", caseId, pollUrl: `/api/cases/${caseId}/status` },
     { status: 202 },

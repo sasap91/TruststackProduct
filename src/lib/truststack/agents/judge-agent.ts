@@ -20,6 +20,15 @@ export type JudgeInput = {
   risk: RiskAssessment;
   decision: PolicyDecision;
   config?: Pick<PolicyConfig, "customPolicyNotes">;
+  /**
+   * Present on iteration 2+. Lets the judge acknowledge what changed between
+   * the previous pass and the current one.
+   */
+  previousDecision?: {
+    outcome:      string;
+    explanation:  string;
+    iteration:    number;
+  };
 };
 
 export type JudgeOutput = {
@@ -35,12 +44,12 @@ export class JudgeAgent implements Agent<JudgeInput, JudgeOutput> {
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     if (!apiKey) {
       return {
-        justification: buildTemplate(input.decision.outcome, input.risk),
+        justification: buildTemplate(input.decision.outcome, input.risk, input.previousDecision),
         judgeSource: "demo",
       };
     }
 
-    const { claimDescription, risk, decision, config } = input;
+    const { claimDescription, risk, decision, config, previousDecision } = input;
 
     const signalSummary = risk.signals
       .map((s: NormalizedSignal) => {
@@ -61,6 +70,10 @@ export class JudgeAgent implements Agent<JudgeInput, JudgeOutput> {
       ? `\nMERCHANT POLICY NOTES:\n${config.customPolicyNotes.trim()}\n`
       : "";
 
+    const previousSection = previousDecision
+      ? `\nPREVIOUS ANALYSIS (iteration ${previousDecision.iteration}):\nOutcome: ${previousDecision.outcome.toUpperCase()}\nExplanation: ${previousDecision.explanation.slice(0, 400)}\n\nThe claimant has since submitted additional evidence. Acknowledge what changed if the current decision differs.\n`
+      : "";
+
     const prompt = `You are TrustStack's claim adjudication AI. Produce a clear, professional 2–3 sentence justification for the decision below. Be concise and factual — no filler phrases. Reference the specific signals that drove the decision.
 
 CLAIM:
@@ -71,7 +84,7 @@ ${signalSummary}
 
 TRIGGERED POLICY RULES:
 ${triggeredRules || "(none — default approve)"}
-${customSection}
+${customSection}${previousSection}
 DECISION: ${decision.outcome.toUpperCase()}
 RISK LEVEL: ${risk.riskLevel.toUpperCase()}
 CONSISTENCY SCORE: ${Math.round(risk.consistencyScore * 100)}%
@@ -90,14 +103,14 @@ Write the justification now (2–3 sentences, no headers, no bullet points):`;
       const text = content.type === "text" ? content.text.trim() : "";
       if (!text) {
         return {
-          justification: buildTemplate(decision.outcome, risk),
+          justification: buildTemplate(decision.outcome, risk, previousDecision),
           judgeSource: "demo",
         };
       }
       return { justification: text, judgeSource: "claude" };
     } catch {
       return {
-        justification: buildTemplate(decision.outcome, risk),
+        justification: buildTemplate(decision.outcome, risk, previousDecision),
         judgeSource: "demo",
       };
     }
@@ -106,7 +119,8 @@ Write the justification now (2–3 sentences, no headers, no bullet points):`;
 
 function buildTemplate(
   outcome: PolicyDecision["outcome"],
-  risk: RiskAssessment,
+  risk:    RiskAssessment,
+  previousDecision?: JudgeInput["previousDecision"],
 ): string {
   const riskSignals = risk.signals.filter((s) => s.flag === "risk");
   const riskNames   = riskSignals.map((s) => s.key.replace(/_/g, " ")).join(", ");
@@ -119,7 +133,13 @@ function buildTemplate(
     return `This claim has been escalated for manual review. Risk signals were detected in: ${riskNames || "one or more analysis layers"}. A human agent should verify the evidence before proceeding with any payout.`;
   }
   if (outcome === "request_more_evidence") {
-    return `Additional evidence is required before this claim can be processed. Contradictions or gaps were detected in the submitted evidence: ${riskNames || "evidence quality is insufficient"}. Please provide supporting documentation.`;
+    const iterNote = previousDecision
+      ? ` This is a re-analysis (pass ${previousDecision.iteration + 1}); the prior decision was "${previousDecision.outcome}".`
+      : "";
+    return `Additional evidence is required before this claim can be processed. Contradictions or gaps were detected in the submitted evidence: ${riskNames || "evidence quality is insufficient"}. Please provide supporting documentation.${iterNote}`;
+  }
+  if (previousDecision && previousDecision.outcome !== outcome) {
+    return `Following the submission of additional evidence, the decision has changed from "${previousDecision.outcome}" to "${outcome}" (risk score: ${score}%). The updated signals are now consistent with the new determination.`;
   }
   return `No policy violations or significant risk signals were detected (risk score: ${score}%). The claim appears consistent with the evidence provided and may be approved subject to standard processing checks.`;
 }

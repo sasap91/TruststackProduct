@@ -34,6 +34,7 @@ const DEFAULTS: Required<Omit<PolicyConfig, "customPolicyNotes" | "policyPackId"
   lateFilingHours:         48,
   highRefundRateThreshold: 0.40,
   requireVideoForHighValue: true,
+  evidenceTimeoutHours:    72,
 };
 
 export class PolicyEngine implements Agent<PolicyEngineInput, PolicyEngineOutput> {

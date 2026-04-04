@@ -12,6 +12,7 @@ enum CaseStatus {
   OPEN
   ANALYZING
   PENDING_REVIEW
+  AWAITING_EVIDENCE
   APPROVED
   REJECTED
   FLAGGED
@@ -145,8 +146,10 @@ model DecisionRun {
   policyVersion   PolicyVersion? @relation(fields: [policyVersionId], references: [id])
 
   // Provenance
-  triggeredBy     String   // userId or "system"
-  pipelineVersion String   @default("2.0.0")
+  triggeredBy      String   // userId or "system"
+  pipelineVersion  String   @default("2.0.0")
+  /// Which pass produced this run (1 = first analysis, 2+ = after evidence re-submission)
+  iterationNumber  Int      @default(1)
 
   // Risk output
   riskScore        Float?

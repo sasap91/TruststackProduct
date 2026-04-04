@@ -104,6 +104,20 @@ export type OrchestratorInput = {
    * Optional multimodal / reasoning backends. Omitted fields use mock or heuristic defaults.
    */
   providers?: TrustStackProviderDeps;
+  /**
+   * Which iteration this run represents (1 = first, 2+ = after evidence re-submission).
+   * Default 1. Stored in DecisionRun.iterationNumber for audit purposes.
+   */
+  iterationNumber?: number;
+  /**
+   * Summary of the previous run — passed to JudgeAgent so the explanation can
+   * acknowledge what changed between iterations. Only present on iteration 2+.
+   */
+  previousDecision?: {
+    outcome:     string;
+    explanation: string;
+    iteration:   number;
+  };
 };
 
 export type OrchestratorResult = {
@@ -216,8 +230,10 @@ export class MultimodalClaimOrchestrator {
       mediaBuffers,
       policyConfig = {},
       triggeredBy,
-      mode: modeOverride,
-      providers: providerDeps,
+      mode:             modeOverride,
+      providers:        providerDeps,
+      iterationNumber:  iterNum    = 1,
+      previousDecision: prevDecision,
     } = input;
 
     const imageAgent = providerDeps?.vision
@@ -372,6 +388,7 @@ export class MultimodalClaimOrchestrator {
           risk:             riskAssessment,
           decision:         policyDecision,
           config:           policyConfig,
+          previousDecision: prevDecision,
         });
         judgeSource    = judgeOut.judgeSource;
         justification  = judgeOut.justification;
@@ -442,6 +459,7 @@ export class MultimodalClaimOrchestrator {
       actions,
       justification,
       judgeSource,
+      iterationNumber:  iterNum,
       startedAt,
       completedAt,
       durationMs,

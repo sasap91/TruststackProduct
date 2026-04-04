@@ -15,6 +15,7 @@ export type CaseStatus =
   | "OPEN"
   | "ANALYZING"
   | "PENDING_REVIEW"
+  | "AWAITING_EVIDENCE"  // request_more_evidence outcome — waiting for claimant re-submission
   | "APPROVED"
   | "REJECTED"
   | "FLAGGED";

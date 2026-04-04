@@ -15,7 +15,12 @@
  *   { type: "TEXT" | "METADATA", content: string }
  *
  * Response 201:
- *   { artifactId, type, status }
+ *   { artifactId, type, status, analysisTriggered? }
+ *
+ * ── Auto re-analysis ─────────────────────────────────────────────────────────
+ * If the case is in status AWAITING_EVIDENCE (set after a "request_more_evidence"
+ * outcome), adding new evidence automatically re-triggers the analysis pipeline.
+ * The response includes `analysisTriggered: true` in that case.
  */
 
 import { NextResponse }   from "next/server";
@@ -28,6 +33,7 @@ import {
   optionalString,
   withErrorHandling,
 } from "@/lib/api-validate";
+import { runAnalysisBackground } from "@/app/api/cases/[id]/analyze/route";
 
 export const runtime = "nodejs";
 
@@ -43,8 +49,8 @@ export const POST = withErrorHandling(async (request, { params }) => {
 
   // Verify case ownership
   const dbCase = await db.case.findFirst({
-    where: { id: caseId, userId },
-    select: { id: true, status: true },
+    where:  { id: caseId, userId },
+    select: { id: true, status: true, ref: true },
   });
   if (!dbCase) throw new ApiError(404, "Case not found.");
   if (dbCase.status === "APPROVED" || dbCase.status === "REJECTED") {
@@ -87,8 +93,6 @@ export const POST = withErrorHandling(async (request, { params }) => {
         type:      rawType as any,
         mimeType,
         sizeBytes: buffer.byteLength,
-        // Binary content stored in object storage in production
-        // storageRef populated by upload handler; omitted here
       },
       select: { id: true, type: true },
     });
@@ -102,8 +106,10 @@ export const POST = withErrorHandling(async (request, { params }) => {
       },
     });
 
+    const analysisTriggered = await maybeRetriggerAnalysis(dbCase, userId);
+
     return NextResponse.json(
-      { artifactId: artifact.id, type: artifact.type, status: "pending" },
+      { artifactId: artifact.id, type: artifact.type, status: "pending", analysisTriggered },
       { status: 201 },
     );
   }
@@ -138,11 +144,39 @@ export const POST = withErrorHandling(async (request, { params }) => {
       },
     });
 
+    const analysisTriggered = await maybeRetriggerAnalysis(dbCase, userId);
+
     return NextResponse.json(
-      { artifactId: artifact.id, type: artifact.type, status: "pending" },
+      { artifactId: artifact.id, type: artifact.type, status: "pending", analysisTriggered },
       { status: 201 },
     );
   }
 
   throw new ApiError(415, "Content-Type must be multipart/form-data or application/json.");
 });
+
+// ── Auto re-analysis ──────────────────────────────────────────────────────────
+
+/**
+ * If the case is AWAITING_EVIDENCE, immediately transition to ANALYZING and
+ * kick off the background analysis loop. Returns true if triggered.
+ */
+async function maybeRetriggerAnalysis(
+  dbCase: { id: string; status: string; ref: string },
+  userId: string,
+): Promise<boolean> {
+  if (dbCase.status !== "AWAITING_EVIDENCE") return false;
+
+  // Transition to ANALYZING
+  await db.case.update({
+    where: { id: dbCase.id },
+    data:  { status: "ANALYZING", updatedAt: new Date() },
+  });
+
+  // Kick off background analysis — inherits policy config from prior merchant settings
+  setImmediate(() => {
+    void runAnalysisBackground(dbCase.id, userId, dbCase.ref, {});
+  });
+
+  return true;
+}
