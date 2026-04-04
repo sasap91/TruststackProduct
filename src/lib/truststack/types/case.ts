@@ -63,6 +63,12 @@ export type ClaimCase = {
   /** Amount the customer claims in USD (cross-check vs invoice / receipt evidence) */
   claimedAmountUsd?: number;
 
+  // ── Contact / shipping (used for velocity queries) ────────────────────────
+  /** Shipping address, normalized (lowercase, stripped punctuation) */
+  shippingAddress?: string;
+  /** Claimant email, lowercased */
+  email?: string;
+
   // ── Evidence and analysis ──────────────────────────────────────────────────
   evidence: EvidenceArtifact[];
   /** The most recent (or only) decision run for this case */

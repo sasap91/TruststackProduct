@@ -45,4 +45,5 @@ export const EXTRACTOR = {
   image:    "image-evidence-agent@1.0",
   document: "document-evidence-agent@1.0",
   metadata: "metadata-evidence-agent@1.0",
+  velocity: "velocity-evidence-agent@1.0",
 } as const;

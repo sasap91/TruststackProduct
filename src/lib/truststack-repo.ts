@@ -173,6 +173,63 @@ export async function saveActionExecutions(
   });
 }
 
+// ── Velocity data ─────────────────────────────────────────────────────────────
+
+export type VelocityData = {
+  /** Cases filed by the same userId in the last 30 days (excluding caseId) */
+  claimsLast30DaysByUser:    number;
+  /** Cases with the same normalized shippingAddress in the last 30 days, or null if not provided */
+  claimsLast30DaysByAddress: number | null;
+  /** Cases with the same email in the last 30 days, or null if not provided */
+  claimsLast30DaysByEmail:   number | null;
+};
+
+/**
+ * Query historical claim counts for velocity signal computation.
+ * Excludes the current case (caseId) from all counts.
+ * Runs three COUNT queries in parallel — each indexed by the relevant field.
+ */
+export async function getVelocitySignals(
+  caseId: string,
+  userId: string,
+  opts?: {
+    shippingAddress?: string;
+    email?: string;
+  },
+): Promise<VelocityData> {
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [byUser, byAddress, byEmail] = await Promise.all([
+    db.case.count({
+      where: { userId, createdAt: { gte: since }, id: { not: caseId } },
+    }),
+    opts?.shippingAddress
+      ? db.case.count({
+          where: {
+            shippingAddress: opts.shippingAddress,
+            createdAt: { gte: since },
+            id: { not: caseId },
+          },
+        })
+      : Promise.resolve(null),
+    opts?.email
+      ? db.case.count({
+          where: {
+            email: opts.email,
+            createdAt: { gte: since },
+            id: { not: caseId },
+          },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    claimsLast30DaysByUser:    byUser,
+    claimsLast30DaysByAddress: byAddress,
+    claimsLast30DaysByEmail:   byEmail,
+  };
+}
+
 // ── Human review ──────────────────────────────────────────────────────────────
 
 /**

@@ -31,6 +31,11 @@ import {
   withErrorHandling,
 } from "@/lib/api-validate";
 
+function normalizeAddress(raw?: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  return raw.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+}
+
 export const runtime = "nodejs";
 
 export const POST = withErrorHandling(async (request) => {
@@ -45,14 +50,21 @@ export const POST = withErrorHandling(async (request) => {
   const ref = generateCaseRef();
   const now = new Date();
 
+  const shippingAddress = normalizeAddress(body.shippingAddress);
+  const email = typeof body.email === "string" && body.email.trim()
+    ? body.email.toLowerCase().trim()
+    : null;
+
   const dbCase = await db.case.create({
     data: {
       ref,
       userId,
-      status:         "OPEN",
-      description:    optionalField<string>(body, "description")?.slice(0, 1000),
-      claimType:      optionalField<string>(body, "claimType"),
-      deliveryStatus: optionalField<string>(body, "deliveryStatus"),
+      status:          "OPEN",
+      description:     optionalField<string>(body, "description")?.slice(0, 1000),
+      claimType:       optionalField<string>(body, "claimType"),
+      deliveryStatus:  optionalField<string>(body, "deliveryStatus"),
+      shippingAddress: shippingAddress ?? undefined,
+      email:           email ?? undefined,
       events: {
         create: [{
           actor:   userId,

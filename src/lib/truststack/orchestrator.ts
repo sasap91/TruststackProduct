@@ -67,6 +67,7 @@ import {
   documentEvidenceAgent,
 } from "./agents/evidence/document-evidence-agent";
 import { metadataEvidenceAgent, type OrderMetadata } from "./agents/evidence/metadata-evidence-agent";
+import { velocityEvidenceAgent } from "./agents/evidence/velocity-evidence-agent";
 
 // Pipeline agents
 import { signalFusionAgent } from "./agents/signal-fusion-agent";
@@ -480,6 +481,31 @@ export class MultimodalClaimOrchestrator {
         }
       });
     }
+
+    // Velocity task (always runs — queries DB for cross-claim behavioral patterns)
+    const velocityStepId = evidenceStepId(`${claimCase.id}-velocity`);
+    tasks.push(async () => {
+      tracker.start(velocityStepId);
+      try {
+        const out = await velocityEvidenceAgent.run({
+          artifactId:      `${claimCase.id}-velocity`,
+          caseId:          claimCase.id,
+          userId:          claimCase.userId,
+          shippingAddress: claimCase.shippingAddress,
+          email:           claimCase.email,
+        });
+        analyses.push(out.analysis);
+        signals.push(...out.signals);
+        tracker.complete(velocityStepId, {
+          artifactId:  `${claimCase.id}-velocity`,
+          modality:    "metadata",
+          signalCount: out.signals.length,
+        });
+      } catch (err) {
+        tracker.fail(velocityStepId, err);
+        // Non-fatal: continue without velocity signals
+      }
+    });
 
     // Per-artifact tasks
     for (const artifact of claimCase.evidence) {

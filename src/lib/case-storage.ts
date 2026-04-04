@@ -208,16 +208,18 @@ export function dbCaseToClaimCase(dbCase: any): ClaimCase {
   }));
 
   return {
-    id:             dbCase.id,
-    ref:            dbCase.ref,
-    userId:         dbCase.userId,
-    status:         dbCase.status,
-    claimType:      dbCase.claimType ?? undefined,
-    deliveryStatus: dbCase.deliveryStatus ?? undefined,
-    description:    dbCase.description ?? undefined,
+    id:              dbCase.id,
+    ref:             dbCase.ref,
+    userId:          dbCase.userId,
+    status:          dbCase.status,
+    claimType:       dbCase.claimType ?? undefined,
+    deliveryStatus:  dbCase.deliveryStatus ?? undefined,
+    description:     dbCase.description ?? undefined,
+    shippingAddress: dbCase.shippingAddress ?? undefined,
+    email:           dbCase.email ?? undefined,
     evidence,
-    createdAt:      dbCase.createdAt,
-    updatedAt:      dbCase.updatedAt,
+    createdAt:       dbCase.createdAt,
+    updatedAt:       dbCase.updatedAt,
   };
 }
 

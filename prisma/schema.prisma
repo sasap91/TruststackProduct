@@ -41,9 +41,12 @@ model Case {
   resolvedAt DateTime?
 
   // Claim context
-  claimType      String?
-  description    String?
-  deliveryStatus String?
+  claimType       String?
+  description     String?
+  deliveryStatus  String?
+  // Contact/shipping fields for velocity queries (normalized on write)
+  shippingAddress String?
+  email           String?
 
   // Denormalized decision output (populated from the latest run)
   decision      String?   // PolicyDecision outcome
@@ -69,6 +72,8 @@ model Case {
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([status])
+  @@index([shippingAddress])
+  @@index([email])
 }
 
 /// A single piece of evidence attached to a case.

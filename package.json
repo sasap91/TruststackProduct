@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "eval": "npx tsx scripts/run-eval.ts"
+    "eval": "npx tsx scripts/run-eval.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -27,7 +28,6 @@
     "resend": "^6.9.4"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -35,6 +35,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }
