@@ -35,10 +35,14 @@ When a customer submits a claim (damaged item, not received, wrong item), TrustS
 │                                                                     │
 │  POST /api/cases                  Create a new case                │
 │  POST /api/cases/:id/evidence     Attach evidence artifact         │
-│  POST /api/cases/:id/analyze      Run analysis pipeline            │
+│  POST /api/cases/:id/analyze      Trigger async analysis (202)     │
+│  GET  /api/cases/:id/status       Poll analysis status             │
 │  POST /api/cases/:id/review       Submit human review decision     │
+│  GET|POST /api/webhooks           Webhook endpoint management      │
+│  DELETE /api/webhooks/:id         Remove webhook endpoint          │
 │  POST /api/analyze/claim          Legacy single-shot endpoint      │
 │  GET|POST|DELETE /api/keys        API key management               │
+│  GET|PUT /api/settings/policy     Risk weights + policy rules      │
 │  POST /api/webhooks/clerk         Clerk user sync                  │
 └────────────────────────┬────────────────────────────────────────────┘
                          │
@@ -310,7 +314,9 @@ Without `ANTHROPIC_API_KEY` the system runs in demo mode (deterministic placehol
 
 ## API
 
-### Case-based flow (recommended)
+### Case-based flow (async, recommended)
+
+Analysis is **non-blocking**. `POST /api/cases/:id/analyze` returns `202 Accepted` immediately; the pipeline runs in the background. Poll for completion or receive the result via webhook.
 
 ```bash
 # 1. Create a case
@@ -322,17 +328,91 @@ POST /api/cases
 POST /api/cases/:id/evidence
 multipart: file (image) or JSON { "text": "...", "type": "text" }
 
-# 3. Run analysis — autonomous actions fire automatically
+# 3. Trigger analysis — returns 202 immediately
 POST /api/cases/:id/analyze
-→ ClaimAnalysisResponse
+→ 202 { "status": "processing", "caseId": "...", "pollUrl": "/api/cases/:id/status" }
+
+# 4a. Poll for result
+GET /api/cases/:id/status
+→ { "status": "processing" }
+→ { "status": "completed", "decisionRunId": "..." }
+→ { "status": "failed",    "error": "..." }
+
+# 4b. Or receive the result via webhook (see below)
 ```
+
+If `POST /api/cases/:id/analyze` is called while a case is already `ANALYZING`, it returns `202` idempotently — no duplicate pipeline is started.
+
+### Webhooks
+
+Register an HTTPS endpoint to receive analysis results without polling:
+
+```bash
+# Register an endpoint
+POST /api/webhooks
+{ "url": "https://your-server.com/hooks", "events": ["analysis.completed", "analysis.failed"] }
+→ 201 {
+    "id": "...",
+    "url": "...",
+    "events": [...],
+    "secret": "ts_whsec_...",   ← store this, shown only once
+    "note": "Store this secret — it will not be shown again."
+  }
+
+# List registered endpoints
+GET /api/webhooks
+→ { "endpoints": [{ "id", "url", "events", "createdAt" }] }
+
+# Remove an endpoint
+DELETE /api/webhooks/:id
+→ { "ok": true }
+```
+
+#### Webhook payload
+
+Every delivery is a `POST` to your URL with:
+
+```
+Content-Type:            application/json
+X-TrustStack-Event:      analysis.completed   (or analysis.failed)
+X-TrustStack-Signature:  sha256=<hmac>
+```
+
+```jsonc
+{
+  "event": "analysis.completed",
+  "caseId": "clx...",
+  "timestamp": "2026-04-04T22:57:00.000Z",
+  "data": { /* ClaimAnalysisResponse */ }
+}
+```
+
+#### Verifying signatures
+
+```typescript
+import { createHmac } from "crypto";
+
+function isValidSignature(rawBody: string, header: string, secret: string): boolean {
+  const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+  return header === expected;
+}
+```
+
+TrustStack retries once on non-2xx, with a 2 s delay. After two failures the delivery is dropped and the error is logged. Respond with `2xx` quickly — do your processing asynchronously.
+
+#### Supported events
+
+| Event | Fired when |
+|-------|-----------|
+| `analysis.completed` | Pipeline finished; decision is available |
+| `analysis.failed` | Orchestrator threw before persisting a run |
 
 ### Legacy single-shot
 
 ```bash
 POST /api/analyze/claim
 multipart: file + claimText + optional policy fields
-→ ClaimAnalysisResponse
+→ ClaimAnalysisResponse   (synchronous, waits for full pipeline)
 ```
 
 ### Standalone detection
@@ -340,6 +420,13 @@ multipart: file + claimText + optional policy fields
 ```bash
 POST /api/analyze/image   multipart: file
 POST /api/analyze/text    JSON: { "text": "..." }
+```
+
+### API Keys & Settings
+
+```bash
+GET|POST|DELETE /api/keys             API key management
+GET|PUT /api/settings/policy          Risk weights + routing thresholds + custom rules
 ```
 
 All endpoints accept either a Clerk session (dashboard) or an API key (`Authorization: Bearer ts_...`).

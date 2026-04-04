@@ -378,3 +378,21 @@ model MerchantPolicy {
 
   @@index([userId])
 }
+
+// ── Webhook Endpoints ─────────────────────────────────────────────────────────
+
+/// Per-merchant webhook delivery targets. One merchant may register many endpoints.
+/// The secret is stored plaintext — required for HMAC signing outbound payloads.
+model WebhookEndpoint {
+  id        String   @id @default(cuid())
+  userId    String
+  url       String
+  /// Plaintext HMAC signing secret — returned once at creation, used to sign deliveries
+  secret    String
+  /// Event filter: e.g. ["analysis.completed", "analysis.failed"]. Empty = all events.
+  events    String[]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

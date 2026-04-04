@@ -1,14 +1,16 @@
 /**
  * POST /api/cases/:id/analyze
  *
- * Trigger analysis on an existing case. Loads all stored evidence artifacts,
- * runs the MultimodalClaimOrchestrator, persists results, and returns the
- * full ClaimAnalysisResponse.
+ * Async analysis trigger. Returns 202 immediately; the orchestrator runs in
+ * the background (setImmediate — standalone/Node deployment).
  *
- * Note: Binary artifacts (images) require their bytes to be available.
- * Until object-storage retrieval is wired up, image artifacts stored by
- * POST /api/cases/:id/evidence without inline content will be skipped;
- * their evidence step will be marked "skipped" in the audit trail.
+ * Response 202:
+ *   { status: "processing", caseId: string, pollUrl: string }
+ *
+ * Poll GET /api/cases/:id/status for completion.
+ * On completion a webhook is fired to all subscribed endpoints:
+ *   event "analysis.completed" — full decision payload
+ *   event "analysis.failed"    — { error: string }
  *
  * Request body (JSON, optional):
  *   policyConfig?: {
@@ -20,23 +22,24 @@
  *     policyPackId?: "standard" | "strict" | "lenient"
  *     customPolicyNotes?: string
  *   }
- *
- * Response 200: ClaimAnalysisResponse
  */
 
-import { NextResponse }         from "next/server";
-import { resolveUserId }        from "@/lib/apikey-auth";
-import { checkRateLimit }       from "@/lib/ratelimit";
-import { db }                   from "@/lib/db";
-import { claimOrchestrator }    from "@/lib/truststack";
-import { buildClaimResponse }   from "@/lib/truststack/api";
+import { NextResponse }      from "next/server";
+import { resolveUserId }     from "@/lib/apikey-auth";
+import { checkRateLimit }    from "@/lib/ratelimit";
+import { db }                from "@/lib/db";
+import { claimOrchestrator } from "@/lib/truststack";
+import { buildClaimResponse } from "@/lib/truststack/api";
 import { dbCaseToClaimCase, updateCaseWithRun } from "@/lib/case-storage";
 import { ApiError, withErrorHandling } from "@/lib/api-validate";
 import type { PolicyConfig, DecisionRun } from "@/lib/truststack";
 import { executeActions, type ActionExecutorContext } from "@/lib/truststack/executor";
+import { dispatchWebhook } from "@/lib/truststack/webhook-dispatcher";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildExecutorContext(
   run:     DecisionRun,
@@ -58,6 +61,69 @@ function buildExecutorContext(
   };
 }
 
+/**
+ * Full analysis pipeline — runs in background after 202 is returned.
+ * Handles its own error reporting so no exception escapes to the caller.
+ */
+async function runAnalysisBackground(
+  caseId:       string,
+  userId:       string,
+  caseRef:      string,
+  policyConfig: PolicyConfig,
+): Promise<void> {
+  let claimCase;
+
+  try {
+    // Re-load the case inside the background job (fresh snapshot)
+    const dbCase = await db.case.findFirst({
+      where:   { id: caseId, userId },
+      include: { evidence: true },
+    });
+    if (!dbCase) return; // case deleted between accept and execution
+
+    claimCase = dbCaseToClaimCase(dbCase);
+
+    const { run } = await claimOrchestrator.run({
+      claimCase,
+      mediaBuffers: undefined,
+      policyConfig,
+      triggeredBy:  userId,
+    });
+
+    // Persist results + execute autonomous actions
+    await updateCaseWithRun(caseId, run, claimCase, userId);
+    await executeActions(caseId, run.actions, buildExecutorContext(run, caseRef, userId));
+
+    // Fire webhook: analysis.completed
+    const response = buildClaimResponse(run, caseRef);
+    await dispatchWebhook(caseId, "analysis.completed", response as unknown as Record<string, unknown>);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[analyze] Background analysis failed for case ${caseId}:`, err);
+
+    // Revert case from ANALYZING → OPEN + log failure event
+    await db.case.update({
+      where: { id: caseId },
+      data: {
+        status:    "OPEN",
+        updatedAt: new Date(),
+        events: {
+          create: {
+            actor:   "system",
+            type:    "analysis_failed",
+            payload: { error: message },
+          },
+        },
+      },
+    }).catch(() => null);
+
+    // Fire webhook: analysis.failed
+    await dispatchWebhook(caseId, "analysis.failed", { error: message });
+  }
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
+
 export const POST = withErrorHandling(async (request, { params }) => {
   const userId = await resolveUserId(request);
   if (!userId) throw new ApiError(401, "Unauthorized.");
@@ -67,7 +133,7 @@ export const POST = withErrorHandling(async (request, { params }) => {
 
   const { id: caseId } = await params;
 
-  // ── Load case + evidence from DB ──────────────────────────────────────────
+  // ── Load case ───────────────────────────────────────────────────────────────
   const dbCase = await db.case.findFirst({
     where:   { id: caseId, userId },
     include: { evidence: true },
@@ -76,40 +142,37 @@ export const POST = withErrorHandling(async (request, { params }) => {
   if (dbCase.status === "APPROVED" || dbCase.status === "REJECTED") {
     throw new ApiError(409, "Case is already resolved.");
   }
+  if (dbCase.status === "ANALYZING") {
+    // Already in-flight — return 202 idempotently so callers can retry safely
+    return NextResponse.json(
+      { status: "processing", caseId, pollUrl: `/api/cases/${caseId}/status` },
+      { status: 202 },
+    );
+  }
 
-  // ── Parse optional policy config ──────────────────────────────────────────
+  // ── Parse optional policy config ────────────────────────────────────────────
   let policyConfig: PolicyConfig = {};
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (body?.policyConfig && typeof body.policyConfig === "object") {
     policyConfig = body.policyConfig as PolicyConfig;
   }
 
-  // ── Rebuild ClaimCase in memory ───────────────────────────────────────────
-  const claimCase = dbCaseToClaimCase(dbCase);
-
-  // Mark case as ANALYZING
+  // ── Transition to ANALYZING ─────────────────────────────────────────────────
   await db.case.update({
     where: { id: caseId },
     data:  { status: "ANALYZING", updatedAt: new Date() },
   });
 
-  // ── Orchestrate ───────────────────────────────────────────────────────────
-  // Binary media buffers: in production these come from object storage.
-  // Currently not wired — image artifacts from prior uploads will be skipped
-  // with a clear "skipped" step in the audit trail.
-  const { run } = await claimOrchestrator.run({
-    claimCase,
-    mediaBuffers: undefined, // TODO: retrieve from object storage by storageRef
-    policyConfig,
-    triggeredBy: userId,
+  // ── Kick off background analysis (setImmediate = next tick, non-blocking) ───
+  // Standalone/Docker deployment — setImmediate keeps the event loop alive
+  // until the async work completes after the HTTP response is flushed.
+  setImmediate(() => {
+    void runAnalysisBackground(caseId, userId, dbCase.ref, policyConfig);
   });
 
-  // ── Persist results then execute autonomous actions (background) ─────────
-  updateCaseWithRun(caseId, run, claimCase, userId)
-    .then(() => executeActions(caseId, run.actions, buildExecutorContext(run, dbCase.ref, userId)))
-    .catch(() => null);
-
-  // ── Respond ───────────────────────────────────────────────────────────────
-  const response = buildClaimResponse(run, dbCase.ref);
-  return NextResponse.json(response);
+  // ── Return 202 immediately ──────────────────────────────────────────────────
+  return NextResponse.json(
+    { status: "processing", caseId, pollUrl: `/api/cases/${caseId}/status` },
+    { status: 202 },
+  );
 });
