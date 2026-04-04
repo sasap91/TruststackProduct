@@ -2,6 +2,7 @@ import Link from "next/link";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { DecisionPanel, type ClaimAnalysisResult } from "@/components/DecisionPanel";
+import { ContactSection } from "@/components/ContactSection";
 import mockDecision from "../../public/mock-decision.json";
 
 const capabilities = [
@@ -69,12 +70,12 @@ export default function Home() {
             >
               Try the console
             </Link>
-            <Link
-              href="/pricing"
+            <a
+              href="#contact"
               className="inline-flex items-center justify-center rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
             >
-              View pricing
-            </Link>
+              Get in touch
+            </a>
           </div>
         </section>
 
@@ -205,24 +206,16 @@ export default function Home() {
           </div>
         </section>
 
-        {/* One-liner CTA */}
-        <section className="border-t border-zinc-200/80 py-16 text-center dark:border-zinc-800/80">
-          <p className="mx-auto max-w-2xl text-xl font-semibold leading-snug text-zinc-900 dark:text-zinc-50">
-            A multimodal, policy-driven platform that helps commerce teams verify claims, detect returns fraud, and automate claim fraud decisions.
+        {/* Message us */}
+        <section id="contact" className="border-t border-zinc-200/80 py-16 dark:border-zinc-800/80">
+          <h2 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+            Message us
+          </h2>
+          <p className="mt-2 text-sm text-zinc-500">
+            Interested in TrustStack? Fill in the form and we&apos;ll get back to you shortly.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link
-              href="/sign-up"
-              className="inline-flex items-center rounded-full bg-teal-600 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-teal-500 dark:bg-teal-500 dark:hover:bg-teal-400"
-            >
-              Get started free
-            </Link>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center rounded-full border border-zinc-300 px-6 py-3 text-sm font-semibold text-zinc-800 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-            >
-              See pricing
-            </Link>
+          <div className="mt-8 max-w-2xl">
+            <ContactSection />
           </div>
         </section>
 

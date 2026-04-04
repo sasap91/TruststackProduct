@@ -9,9 +9,6 @@ export function SiteHeader() {
           TrustStack
         </Link>
         <nav className="flex items-center gap-5 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-          <Link href="/pricing" className="transition-colors hover:text-teal-600 dark:hover:text-teal-400">
-            Pricing
-          </Link>
           <Link href="/contact" className="transition-colors hover:text-teal-600 dark:hover:text-teal-400">
             Contact
           </Link>
