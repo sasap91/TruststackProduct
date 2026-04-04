@@ -354,3 +354,27 @@ model UsageRecord {
 
   @@index([userId, createdAt(sort: Desc)])
 }
+
+// ── Merchant Policy ───────────────────────────────────────────────────────────
+
+/// Per-merchant policy configuration. One row per userId (upserted on save).
+/// Loaded by the orchestrator at run time to override default risk weights
+/// and policy thresholds without code changes.
+model MerchantPolicy {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  /// { fraud: number, claimIntegrity: number, account: number, procedural: number } — sum must equal 1
+  riskWeights         Json
+  autoApproveBelow    Float    @default(0.1)
+  autoRejectAbove     Float    @default(0.88)
+  /// { low: number, high: number } — review-band thresholds
+  reviewBand          Json
+  claimValueThreshold Float?
+  maxRefundsPerMonth  Int?
+  /// Array of { id, name, signal_key, outcome, priority, override } serializable rule objects
+  customRules         Json     @default("[]")
+  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now())
+
+  @@index([userId])
+}

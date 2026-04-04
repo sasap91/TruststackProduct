@@ -44,6 +44,19 @@ export type PolicyAgentInput = {
   config?: PolicyConfig;
   /** Claim narrative for optional PolicyReasoningProvider (never used by base rules) */
   claimDescription?: string;
+  /**
+   * Serializable custom rules from MerchantPolicy, compiled to PolicyRule at runtime.
+   * Each rule fires when the named signal_key is flagged as "risk".
+   * Custom rules take effect after built-in rules are assembled (priority ordering applies).
+   */
+  merchantRules?: Array<{
+    id:         string;
+    name:       string;
+    signal_key: string;
+    outcome:    DecisionOutcome;
+    priority:   number;
+    override:   boolean;
+  }>;
 };
 
 export type PolicyAgentOutput = PolicyDecision;
@@ -428,6 +441,22 @@ export class PolicyAgent implements Agent<PolicyAgentInput, PolicyAgentOutput> {
       const idx = rules.findIndex((r) => r.id === "review_repeat_claimant");
       if (idx !== -1) rules.splice(idx, 1);
     }
+    // ── Merge merchant custom rules ───────────────────────────────────────────
+    if (input.merchantRules?.length) {
+      const compiled: PolicyRule[] = input.merchantRules.map((r) => ({
+        id:           r.id,
+        name:         r.name,
+        priority:     r.priority,
+        override:     r.override,
+        evidenceKeys: [r.signal_key],
+        condition:    (ctx: RuleCtx) => ctx.isRisk(r.signal_key),
+        outcome:      r.outcome,
+        detail:       (_ctx: RuleCtx) =>
+          `Custom rule "${r.name}": signal "${r.signal_key}" is flagged as risk.`,
+      }));
+      rules.push(...compiled);
+    }
+
     rules.sort((a, b) => a.priority - b.priority);
 
     // ── Evaluate rules ────────────────────────────────────────────────────────

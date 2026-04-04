@@ -230,6 +230,52 @@ export async function getVelocitySignals(
   };
 }
 
+// ── Merchant policy ───────────────────────────────────────────────────────────
+
+export type StoredRiskWeights = {
+  fraud:          number;
+  claimIntegrity: number;
+  account:        number;
+  procedural:     number;
+};
+
+export type StoredCustomRule = {
+  id:         string;
+  name:       string;
+  signal_key: string;
+  outcome:    string;
+  priority:   number;
+  override:   boolean;
+};
+
+export type MerchantPolicyData = {
+  riskWeights:         StoredRiskWeights;
+  autoApproveBelow:    number;
+  autoRejectAbove:     number;
+  reviewBand:          { low: number; high: number };
+  claimValueThreshold: number | null;
+  maxRefundsPerMonth:  number | null;
+  customRules:         StoredCustomRule[];
+};
+
+/**
+ * Load the merchant's saved policy configuration.
+ * Returns null if no policy has been saved yet (caller uses hardcoded defaults).
+ */
+export async function getMerchantPolicy(userId: string): Promise<MerchantPolicyData | null> {
+  const row = await db.merchantPolicy.findUnique({ where: { userId } });
+  if (!row) return null;
+  return {
+    riskWeights:         row.riskWeights         as StoredRiskWeights,
+    autoApproveBelow:    row.autoApproveBelow,
+    autoRejectAbove:     row.autoRejectAbove,
+    reviewBand:          row.reviewBand           as { low: number; high: number },
+    claimValueThreshold: row.claimValueThreshold,
+    maxRefundsPerMonth:  row.maxRefundsPerMonth,
+    customRules:         (row.customRules         as StoredCustomRule[]) ?? [],
+  };
+}
+
 // ── Human review ──────────────────────────────────────────────────────────────
 
 /**

@@ -27,6 +27,17 @@ import { toRiskLevel } from "../types/risk";
 export type RiskAgentInput = {
   caseId: string;
   fusionResult: SignalFusionResult;
+  /**
+   * Custom category weights from MerchantPolicy.
+   * If omitted, hardcoded defaults (fraud 35%, claim_integrity 30%,
+   * account 20%, procedural 15%) are used — no breaking change.
+   */
+  weights?: {
+    fraud:          number;
+    claimIntegrity: number;
+    account:        number;
+    procedural:     number;
+  };
 };
 
 // ── Category membership ───────────────────────────────────────────────────────
@@ -132,7 +143,16 @@ export class RiskAgent implements Agent<RiskAgentInput, RiskAssessment> {
     let weightedScore = 0;
     let appliedWeight = 0;
 
-    for (const [cat, weight] of Object.entries(CATEGORY_WEIGHTS) as [RiskCategory, number][]) {
+    const effectiveWeights: Record<RiskCategory, number> = input.weights
+      ? {
+          fraud_evidence:  input.weights.fraud,
+          claim_integrity: input.weights.claimIntegrity,
+          account_risk:    input.weights.account,
+          procedural:      input.weights.procedural,
+        }
+      : CATEGORY_WEIGHTS;
+
+    for (const [cat, weight] of Object.entries(effectiveWeights) as [RiskCategory, number][]) {
       if (categoryMax[cat] === 0) continue; // no signals in this category
       const catScore = Math.min(1, categoryRisk[cat] / categoryMax[cat]);
       weightedScore  += catScore * weight;

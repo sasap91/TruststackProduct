@@ -68,6 +68,8 @@ import {
 } from "./agents/evidence/document-evidence-agent";
 import { metadataEvidenceAgent, type OrderMetadata } from "./agents/evidence/metadata-evidence-agent";
 import { velocityEvidenceAgent } from "./agents/evidence/velocity-evidence-agent";
+import { getMerchantPolicy } from "@/lib/truststack-repo";
+import type { PolicyAgentInput } from "./agents/policy-agent";
 
 // Pipeline agents
 import { signalFusionAgent } from "./agents/signal-fusion-agent";
@@ -239,6 +241,9 @@ export class MultimodalClaimOrchestrator {
     const queuedAt = new Date();
     const mode     = modeOverride ?? detectMode(claimCase, mediaBuffers);
 
+    // Load per-merchant policy (falls back to null → hardcoded defaults used)
+    const merchantPolicy = await getMerchantPolicy(claimCase.userId).catch(() => null);
+
     // ── Register all steps upfront for full audit trail visibility ──────────
     const tracker = new StepTracker();
 
@@ -305,7 +310,18 @@ export class MultimodalClaimOrchestrator {
       // ── Stage 3: Risk assessment ─────────────────────────────────────────
       tracker.start("risk");
       try {
-        riskAssessment = await riskAgent.run({ caseId: claimCase.id, fusionResult });
+        riskAssessment = await riskAgent.run({
+          caseId: claimCase.id,
+          fusionResult,
+          weights: merchantPolicy?.riskWeights
+            ? {
+                fraud:          merchantPolicy.riskWeights.fraud,
+                claimIntegrity: merchantPolicy.riskWeights.claimIntegrity,
+                account:        merchantPolicy.riskWeights.account,
+                procedural:     merchantPolicy.riskWeights.procedural,
+              }
+            : undefined,
+        });
         tracker.complete("risk", {
           riskLevel:  riskAssessment.riskLevel,
           riskScore:  riskAssessment.consistencyScore,
@@ -318,12 +334,23 @@ export class MultimodalClaimOrchestrator {
       // ── Stage 4: Policy evaluation ───────────────────────────────────────
       tracker.start("policy");
       try {
+        // Merge merchant thresholds on top of any call-site policyConfig
+        const effectivePolicyConfig: PolicyConfig = {
+          ...policyConfig,
+          ...(merchantPolicy && {
+            autoApproveBelow:        merchantPolicy.autoApproveBelow,
+            autoRejectAbove:         merchantPolicy.autoRejectAbove,
+            highRefundRateThreshold: merchantPolicy.reviewBand?.high,
+          }),
+        };
+
         policyDecision = await policy.run({
           fusedSignals:     fusionResult.fusedSignals,
           fusionResult,
           riskAssessment,
-          config:           policyConfig,
+          config:           effectivePolicyConfig,
           claimDescription: claimCase.description ?? "",
+          merchantRules:    merchantPolicy?.customRules as PolicyAgentInput["merchantRules"],
         });
         tracker.complete("policy", {
           outcome:            policyDecision.outcome,
