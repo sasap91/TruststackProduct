@@ -23,6 +23,12 @@ export default function SettingsPage() {
           >
             Risk &amp; Policy
           </Link>
+          <Link
+            href="/settings/integrations"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+          >
+            Integrations
+          </Link>
         </nav>
 
         <p className="mt-6 text-sm text-zinc-500">

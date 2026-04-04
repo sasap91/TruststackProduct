@@ -45,6 +45,7 @@ function buildExecutorContext(
   run:     DecisionRun,
   caseRef: string,
   userId:  string,
+  dbCase?: { shopifyOrderId?: string | null; claimValueUsd?: number | null; email?: string | null },
 ): ActionExecutorContext {
   return {
     caseRef,
@@ -58,6 +59,9 @@ function buildExecutorContext(
     evidenceStrength:   run.fusionResult?.evidenceStrength ?? "insufficient",
     modalitiesCovered:  run.fusionResult?.modalitiesCovered ?? [],
     userId,
+    shopifyOrderId:     dbCase?.shopifyOrderId ?? undefined,
+    claimValueUsd:      dbCase?.claimValueUsd ?? undefined,
+    claimantEmail:      dbCase?.email ?? undefined,
   };
 }
 
@@ -92,7 +96,7 @@ async function runAnalysisBackground(
 
     // Persist results + execute autonomous actions
     await updateCaseWithRun(caseId, run, claimCase, userId);
-    await executeActions(caseId, run.actions, buildExecutorContext(run, caseRef, userId));
+    await executeActions(caseId, run.actions, buildExecutorContext(run, caseRef, userId, dbCase));
 
     // Fire webhook: analysis.completed
     const response = buildClaimResponse(run, caseRef);

@@ -51,6 +51,10 @@ export type ActionExecutorContext = {
   /** Direct email for the reviewer queue — falls back to TRUSTSTACK_REVIEWER_EMAIL */
   reviewerEmail?:     string;
   adminEmail?:        string;
+  /** Shopify order ID — triggers an API refund via ShopifyConnection when set */
+  shopifyOrderId?:    string;
+  /** Claim value in USD — passed as refund amount; 0 = full order amount via Shopify API */
+  claimValueUsd?:     number;
 };
 
 // ── Executor ──────────────────────────────────────────────────────────────────

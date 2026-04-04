@@ -48,6 +48,10 @@ model Case {
   shippingAddress String?
   email           String?
 
+  // Shopify integration
+  shopifyOrderId  String?   // Shopify order GID or numeric id — used for automated refunds
+  claimValueUsd   Float?    // Claim amount in USD — used as refund amount when set
+
   // Denormalized decision output (populated from the latest run)
   decision      String?   // PolicyDecision outcome
   justification String?
@@ -395,4 +399,24 @@ model WebhookEndpoint {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// ── Shopify Integration ───────────────────────────────────────────────────────
+
+/// OAuth connection to a merchant's Shopify store.
+/// One row per merchant (userId @unique). Access token encrypted at rest.
+model ShopifyConnection {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  /// e.g. "mybrand.myshopify.com"
+  shop        String
+  /// AES-256-GCM encrypted access token (base64 encoded)
+  accessToken String
+  /// Shopify webhook IDs registered at connect-time (used for cleanup on disconnect)
+  webhookIds  String[]
+  syncEnabled Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop])
 }
