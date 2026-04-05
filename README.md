@@ -43,6 +43,11 @@ When a customer submits a claim (damaged item, not received, wrong item), TrustS
 │  POST /api/analyze/claim          Legacy single-shot endpoint      │
 │  GET|POST|DELETE /api/keys        API key management               │
 │  GET|PUT /api/settings/policy     Risk weights + policy rules      │
+│  GET /api/integrations/shopify    Shopify connection status        │
+│  GET /api/integrations/shopify/connect  Start OAuth flow          │
+│  GET /api/integrations/shopify/callback OAuth callback            │
+│  DELETE /api/integrations/shopify Delete connection               │
+│  POST /api/webhooks/shopify       Shopify event receiver           │
 │  POST /api/webhooks/clerk         Clerk user sync                  │
 └────────────────────────┬────────────────────────────────────────────┘
                          │
@@ -300,6 +305,17 @@ OPENAI_API_KEY=sk-...                # OpenAI Moderation (text safety)
 RESEND_API_KEY=re_...                # Transactional email for actions
 ```
 
+### Optional — Shopify integration
+
+```env
+SHOPIFY_CLIENT_ID=...                # From your Shopify Partner app
+SHOPIFY_CLIENT_SECRET=...            # From your Shopify Partner app
+SHOPIFY_WEBHOOK_SECRET=...           # HMAC key for inbound Shopify webhook verification
+NEXT_PUBLIC_APP_URL=https://your-domain.com  # Used to build OAuth callback URL
+ENCRYPTION_KEY=<64 hex chars>        # AES-256-GCM key for storing Shopify access tokens
+                                     # Generate: openssl rand -hex 32
+```
+
 ### Optional — action executor email routing
 
 ```env
@@ -308,7 +324,7 @@ TRUSTSTACK_ADMIN_EMAIL=admin@yourcompany.com
 TRUSTSTACK_REVIEWER_EMAIL=claims-review@yourcompany.com
 ```
 
-Without `ANTHROPIC_API_KEY` the system runs in demo mode (deterministic placeholder scores). Without `RESEND_API_KEY` all analysis still works — emails are silently skipped and actions are marked `completed`.
+Without `ANTHROPIC_API_KEY` the system runs in demo mode (deterministic placeholder scores). Without `RESEND_API_KEY` all analysis still works — emails are silently skipped and actions are marked `completed`. Without Shopify env vars the integration is simply disabled — core case processing is unaffected.
 
 ---
 
@@ -428,6 +444,23 @@ POST /api/analyze/text    JSON: { "text": "..." }
 GET|POST|DELETE /api/keys             API key management
 GET|PUT /api/settings/policy          Risk weights + routing thresholds + custom rules
 ```
+
+### Shopify Integration
+
+```bash
+GET  /api/integrations/shopify           Connection status (shop, webhookCount, syncEnabled)
+GET  /api/integrations/shopify/connect   Start OAuth — redirects to Shopify authorize
+GET  /api/integrations/shopify/callback  OAuth callback — exchanges code, stores encrypted token
+DELETE /api/integrations/shopify         Disconnect — deletes webhooks from Shopify + DB row
+POST /api/webhooks/shopify               Shopify event receiver (orders/fulfilled, refunds/create)
+                                          Verifies X-Shopify-Hmac-Sha256 header
+```
+
+The connect flow uses a signed state token (`HMAC(userId‖shop‖ts, SHOPIFY_CLIENT_SECRET)`) to prevent CSRF — no cookie or session required. Access tokens are stored encrypted at rest using AES-256-GCM (`ENCRYPTION_KEY`).
+
+### Iterative evidence gathering
+
+When a case is set to `AWAITING_EVIDENCE` (outcome `request_more_evidence`), `POST /api/cases/:id/evidence` automatically re-triggers analysis once new evidence is submitted. The pipeline runs up to **3 iterations**; on the 4th it force-escalates to human review. Evidence windows default to **72 hours**; claims past the window are auto-rejected.
 
 All endpoints accept either a Clerk session (dashboard) or an API key (`Authorization: Bearer ts_...`).
 
