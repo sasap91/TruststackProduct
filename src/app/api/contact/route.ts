@@ -39,7 +39,8 @@ export async function POST(request: Request) {
     await resend.emails.send({
       from: "TrustStack <onboarding@resend.dev>",
       to: "sasakorn.kao@gmail.com",
-      subject: `New inquiry from ${name.trim()}`,
+      replyTo: email.trim(),
+      subject: `New inquiry from ${name.trim()}${company?.trim() ? ` (${company.trim()})` : ""}`,
       text: [
         `Name: ${name.trim()}`,
         `Email: ${email.trim()}`,
@@ -47,6 +48,9 @@ export async function POST(request: Request) {
         ``,
         `Message:`,
         message.trim(),
+        ``,
+        `---`,
+        `Sent via jointruststack.com contact form`,
       ].join("\n"),
     });
   }
