@@ -1,44 +1,47 @@
 /**
- * Run bundled multimodal eval fixtures (CI / local calibration).
+ * Run the full benchmark eval suite.
  * Usage: npx tsx scripts/run-eval.ts
+ *        npm run eval
  */
 
-import {
-  buildAllEvalScenarios,
-  runEvalScenario,
-} from "../src/lib/truststack/eval/index";
+import { runBenchmarkAndWrite } from "../src/lib/truststack/eval/benchmark";
 
 async function main() {
-  const built = buildAllEvalScenarios();
-  let failed = 0;
-  for (const b of built) {
-    const r = await runEvalScenario(b);
-    const ok = r.passed ? "OK" : "FAIL";
-    console.log(
-      `[${ok}] ${b.fixtureId} outcome=${r.actualOutcome} (expected ${b.expect.policyOutcome})`,
-    );
-    if (!r.passed) {
-      failed++;
-      if (r.signalMismatches.length) {
-        console.log("  signalMismatches:", JSON.stringify(r.signalMismatches, null, 2));
+  console.log("TrustStack Eval Benchmark\n");
+
+  const results = await runBenchmarkAndWrite();
+
+  const { fraudDetection: fd, passRate } = results;
+
+  console.log(`\n${"─".repeat(60)}`);
+  console.log(`Fixture results:  ${results.passed}/${results.totalFixtures} passed (${(passRate * 100).toFixed(1)}%)`);
+  console.log(`\nFraud-detection metrics (positive = reject | review):`);
+  console.log(`  Precision : ${(fd.precision * 100).toFixed(1)}%`);
+  console.log(`  Recall    : ${(fd.recall    * 100).toFixed(1)}%`);
+  console.log(`  F1        : ${(fd.f1        * 100).toFixed(1)}%`);
+  console.log(`  TP=${fd.tp}  FP=${fd.fp}  FN=${fd.fn}  TN=${fd.tn}`);
+
+  console.log(`\nOutcome accuracy breakdown:`);
+  for (const [outcome, { expected, correct, accuracy }] of Object.entries(results.outcomeAccuracy)) {
+    const bar = "█".repeat(Math.round(accuracy * 10)).padEnd(10);
+    console.log(`  ${outcome.padEnd(25)} ${correct}/${expected}  ${bar}  ${(accuracy * 100).toFixed(0)}%`);
+  }
+
+  if (results.failed > 0) {
+    console.log(`\nFailed fixtures:`);
+    for (const f of results.fixtures.filter((x) => !x.passed)) {
+      console.log(`  • ${f.id}`);
+      for (const reason of f.failureReasons) {
+        console.log(`      ${reason}`);
       }
-      if (r.contradictionMismatches.length) {
-        console.log("  contradictionMismatches:", JSON.stringify(r.contradictionMismatches, null, 2));
-      }
-      if (r.evidenceStrengthMismatch) {
-        console.log("  evidenceStrength:", r.evidenceStrengthMismatch);
-      }
-      if (r.extraContradictions?.length) {
-        console.log("  extraContradictions:", r.extraContradictions);
-      }
-      console.log("  snapshot:", r.snapshot);
     }
   }
-  if (failed > 0) {
-    console.error(`\n${failed}/${built.length} scenario(s) failed.`);
+
+  console.log(`\nResults written to src/lib/truststack/eval/results/benchmark-results.json`);
+
+  if (results.failed > 0) {
     process.exit(1);
   }
-  console.log(`\nAll ${built.length} eval scenarios passed.`);
 }
 
 main().catch((e) => {

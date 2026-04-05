@@ -288,11 +288,18 @@ export const scenarioDocumentMismatch: MultimodalEvalFixture = {
   },
 };
 
+export { BENCHMARK_FIXTURES } from "./benchmark-fixtures";
+
+import { BENCHMARK_FIXTURES } from "./benchmark-fixtures";
+
 export const ALL_MULTIMODAL_EVAL_FIXTURES: MultimodalEvalFixture[] = [
+  // Original 6
   scenarioClearDamagedStrongEvidence,
   scenarioLateMissingWeakEvidence,
   scenarioContradictoryMultimodal,
   scenarioHighValueNoVideo,
   scenarioRepeatClaimantSuspicious,
   scenarioDocumentMismatch,
+  // Benchmark set: 14 more fixtures (20 total)
+  ...BENCHMARK_FIXTURES,
 ];
