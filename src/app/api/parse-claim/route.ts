@@ -39,22 +39,24 @@ export async function POST(request: Request) {
   }
 
   const fileName = file instanceof File ? file.name.toLowerCase() : "";
+  const contentType = file instanceof File ? file.type.toLowerCase() : "";
   const text = await file.text();
 
-  // ── JSON: parse directly ───────────────────────────────────────────────────
+  // ── JSON: parse directly, including arrays of rows ────────────────────────
   if (fileName.endsWith(".json")) {
     try {
-      const parsed = JSON.parse(text) as Record<string, unknown>;
-      return NextResponse.json({ fields: extractFromJson(parsed), method: "json" });
+      const parsed = JSON.parse(text) as unknown;
+      const result = extractFromStructuredJson(parsed);
+      return NextResponse.json({ fields: result.fields, method: result.method });
     } catch {
       return NextResponse.json({ error: "Invalid JSON file." }, { status: 422 });
     }
   }
 
-  // ── CSV: parse first data row ──────────────────────────────────────────────
-  if (fileName.endsWith(".csv")) {
-    const fields = extractFromCsv(text);
-    return NextResponse.json({ fields, method: "csv" });
+  // ── Tabular text: parse every row and normalize columns ────────────────────
+  if (fileName.endsWith(".csv") || fileName.endsWith(".tsv") || contentType.includes("tab-separated")) {
+    const result = extractFromDelimitedText(text, fileName.endsWith(".tsv") ? "\t" : undefined);
+    return NextResponse.json({ fields: result.fields, method: result.method });
   }
 
   // ── PDF / TXT / everything else → Claude ──────────────────────────────────
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
 
   const client = new Anthropic({ apiKey });
 
-  const prompt = `You are a claims data extraction assistant. Extract structured claim information from the document below and return ONLY a JSON object with these exact keys (omit any key where information is not present):
+  const prompt = `You are a claims data extraction assistant. Extract structured claim information from the document below, even if the file is messy, partially structured, or contains many unrelated columns/rows. Return ONLY a JSON object with these exact keys (omit any key where information is not present):
 
 {
   "claimText": "full claim description as written",
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
 }
 
 DOCUMENT:
-${text.slice(0, 6000)}
+${buildDocumentExcerpt(text)}
 
 Return ONLY the JSON object, no explanation.`;
 
@@ -109,7 +111,7 @@ Return ONLY the JSON object, no explanation.`;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function extractFromJson(obj: Record<string, unknown>): ParsedClaimFields {
+export function extractFromJson(obj: Record<string, unknown>): ParsedClaimFields {
   const get = (...keys: string[]): unknown => {
     for (const key of keys) {
       const found = Object.entries(obj).find(
@@ -129,15 +131,16 @@ function extractFromJson(obj: Record<string, unknown>): ParsedClaimFields {
   if (typeof type === "string") {
     const t = type.toLowerCase();
     if (t.includes("damage")) fields.claimType = "damaged_item";
+    else if (t.includes("not") && (t.includes("receiv") || t.includes("deliver") || t.includes("missing"))) fields.claimType = "not_received";
     else if (t.includes("receiv") || t.includes("deliver") || t.includes("missing")) fields.claimType = "not_received";
     else if (t.includes("wrong") || t.includes("incorrect")) fields.claimType = "wrong_item";
   }
 
-  const delivery = get("deliverystatus", "delivery", "shipmentstatus", "status");
+  const delivery = get("deliverystatus", "delivery", "shipmentstatus", "orderstatus", "status");
   if (typeof delivery === "string") {
     const d = delivery.toLowerCase();
-    if (d.includes("intact") || d.includes("delivered")) fields.deliveryStatus = "delivered_intact";
-    else if (d.includes("not") || d.includes("missing") || d.includes("failed")) fields.deliveryStatus = "not_delivered";
+    if (d.includes("not") || d.includes("missing") || d.includes("failed") || d.includes("undelivered")) fields.deliveryStatus = "not_delivered";
+    else if (d.includes("intact") || d.includes("delivered")) fields.deliveryStatus = "delivered_intact";
     else fields.deliveryStatus = "unknown";
   }
 
@@ -160,15 +163,103 @@ function extractFromJson(obj: Record<string, unknown>): ParsedClaimFields {
   return fields;
 }
 
-function extractFromCsv(csv: string): ParsedClaimFields {
-  const lines = csv.trim().split("\n").filter(Boolean);
-  if (lines.length < 2) return {};
+export function extractFromStructuredJson(parsed: unknown): { fields: ParsedClaimFields; method: string } {
+  if (Array.isArray(parsed)) {
+    const rows = parsed.filter((item): item is Record<string, unknown> => item !== null && typeof item === "object" && !Array.isArray(item));
+    return { fields: extractFromRowSet(rows), method: "json-array" };
+  }
+  if (parsed !== null && typeof parsed === "object") {
+    return { fields: extractFromJson(parsed as Record<string, unknown>), method: "json" };
+  }
+  return { fields: {}, method: "json" };
+}
 
-  const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, "").toLowerCase());
-  const values = lines[1].split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+export function extractFromDelimitedText(text: string, delimiter?: string): { fields: ParsedClaimFields; method: string } {
+  const rows = parseDelimitedRows(text, delimiter);
+  if (rows.length === 0) return { fields: {}, method: delimiter === "\t" ? "tsv" : "csv" };
+  return { fields: extractFromRowSet(rows), method: delimiter === "\t" ? "tsv" : "csv" };
+}
 
-  const row: Record<string, unknown> = {};
-  headers.forEach((h, i) => { row[h] = values[i] ?? ""; });
+export function extractFromRowSet(rows: Array<Record<string, unknown>>): ParsedClaimFields {
+  const merged: Record<string, unknown> = {};
+  for (const row of rows.slice(0, 25)) {
+    for (const [key, value] of Object.entries(row)) {
+      const normalizedKey = key.toLowerCase().replace(/[_\s-]/g, "");
+      if (merged[normalizedKey] === undefined && value !== "" && value != null) {
+        merged[normalizedKey] = value;
+      }
+    }
+  }
+  return extractFromJson(merged);
+}
 
-  return extractFromJson(row);
+export function parseDelimitedRows(text: string, explicitDelimiter?: string): Array<Record<string, unknown>> {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+
+  const delimiter = explicitDelimiter ?? detectDelimiter(lines[0]);
+  const headers = parseDelimitedLine(lines[0], delimiter).map((h) => h.trim().toLowerCase());
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const line of lines.slice(1, 51)) {
+    const values = parseDelimitedLine(line, delimiter);
+    const row: Record<string, unknown> = {};
+    headers.forEach((h, i) => {
+      if (!h) return;
+      row[h] = values[i] ?? "";
+    });
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+export function detectDelimiter(sample: string): string {
+  const candidates = [",", "\t", "|", ";"];
+  let best = ",";
+  let bestCount = -1;
+  for (const delimiter of candidates) {
+    const count = parseDelimitedLine(sample, delimiter).length;
+    if (count > bestCount) {
+      best = delimiter;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+export function parseDelimitedLine(line: string, delimiter: string): string[] {
+  const values: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    const next = line[i + 1];
+    if (ch === '"' && quoted && next === '"') {
+      current += '"';
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && ch === delimiter) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  values.push(current.trim());
+  return values.map((v) => v.replace(/^"|"$/g, ""));
+}
+
+export function buildDocumentExcerpt(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const head = trimmed.slice(0, 4000);
+  const tail = trimmed.length > 4000 ? `\n\n[truncated ${trimmed.length - 4000} chars]` : "";
+  return `${head}${tail}`;
 }

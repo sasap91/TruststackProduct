@@ -63,9 +63,9 @@ export async function CasesList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 bg-white dark:divide-zinc-800/60 dark:bg-zinc-900/20">
-              {cases.map((c) => {
-                const imgArtifact = c.evidence.find((e) => e.type === "IMAGE");
-                const txtArtifact = c.evidence.find((e) => e.type === "TEXT");
+              {cases.map((c: (typeof cases)[number]) => {
+                const imgArtifact = c.evidence.find((e: (typeof c.evidence)[number]) => e.type === "IMAGE");
+                const txtArtifact = c.evidence.find((e: (typeof c.evidence)[number]) => e.type === "TEXT");
                 return (
                   <tr key={c.id} className="hover:bg-zinc-50/60 dark:hover:bg-zinc-800/20">
                     <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-zinc-500">

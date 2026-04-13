@@ -44,7 +44,7 @@ export async function DELETE() {
   try {
     const accessToken = decrypt(conn.accessToken);
     await Promise.all(
-      conn.webhookIds.map((id) =>
+      conn.webhookIds.map((id: string) =>
         deleteWebhook(conn.shop, accessToken, id).catch((err: unknown) =>
           console.warn(`[shopify] Failed to delete webhook ${id}:`, err),
         ),
