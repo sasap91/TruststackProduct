@@ -423,3 +423,25 @@ model ShopifyConnection {
 
   @@index([shop])
 }
+
+// ── Guardian Brand/Compliance Check ──────────────────────────────────────────
+
+model GuardianCheck {
+  id                String   @id @default(cuid())
+  requestId         String   @unique
+  createdAt         DateTime @default(now())
+  mode              String
+  originalPrompt    String?
+  promptWasRepaired Boolean  @default(false)
+  repairedPrompt    String?
+  repairChanges     String   @default("[]")
+  screenerVerdict   String
+  screenerRiskScore Float    @default(0)
+  extractorOutput   String?
+  decisionOutput    String
+  finalVerdict      String
+  safeToPublish     Boolean  @default(false)
+  durationMs        Int      @default(0)
+  violations        String   @default("[]")
+  rulesFired        String   @default("[]")
+}
