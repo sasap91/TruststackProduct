@@ -432,6 +432,10 @@ model GuardianCheck {
   createdAt         DateTime @default(now())
   mode              String
   originalPrompt    String?
+  injectionBlocked    Boolean  @default(false)
+  injectionAttackType String?
+  injectionDescription String?
+  injectionMatchedText String?
   promptWasRepaired Boolean  @default(false)
   repairedPrompt    String?
   repairChanges     String   @default("[]")
@@ -444,4 +448,6 @@ model GuardianCheck {
   durationMs        Int      @default(0)
   violations        String   @default("[]")
   rulesFired        String   @default("[]")
+
+  @@index([injectionBlocked])
 }

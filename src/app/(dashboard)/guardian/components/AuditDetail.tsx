@@ -16,6 +16,8 @@ export function AuditDetail({ result }: Props) {
   const [open, setOpen] = useState(false);
   const [extractorOpen, setExtractorOpen] = useState(false);
 
+  if (result.injectionBlocked) return null;
+
   return (
     <div className="rounded-xl border border-zinc-200 dark:border-zinc-700">
       <button

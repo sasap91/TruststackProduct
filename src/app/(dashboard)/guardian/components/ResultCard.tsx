@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { GuardianAuditRecord } from "@/lib/guardian/types";
+import { InjectionAlert } from "./InjectionAlert";
 
 interface Props {
   result: GuardianAuditRecord;
@@ -116,6 +117,10 @@ const VERDICT_CONFIG = {
 };
 
 export function ResultCard({ result, onUsePrompt }: Props) {
+  if (result.injectionBlocked) {
+    return <InjectionAlert result={result} />;
+  }
+
   const config = VERDICT_CONFIG[result.finalVerdict];
   const suggestions = result.decisionOutput.suggestedPrompts ?? [];
   const isBlocked = result.finalVerdict === "blocked" || result.finalVerdict === "review";
